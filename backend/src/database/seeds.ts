@@ -120,20 +120,19 @@ export async function seedInitialData(): Promise<void> {
     // Ensure default workspace for superadmin
     const freePlan = await SubscriptionPlan.findOne({ code: 'enterprise' });
     if (freePlan) {
-      await Workspace.findOneAndUpdate(
-        { owner_id: adminUser._id },
-        {
-          $setOnInsert: {
-            name: 'SuperAdmin Workspace',
-            slug: 'superadmin-workspace',
-            owner_id: adminUser._id,
-            owner_telegram_id: adminUser.telegram_id,
-            plan_id: freePlan._id,
-            status: 'active',
-          },
-        },
-        { upsert: true }
-      );
+      const existingWs = await Workspace.findOne({
+        $or: [{ owner_id: adminUser._id }, { slug: 'superadmin-workspace' }],
+      });
+      if (!existingWs) {
+        await Workspace.create({
+          name: 'SuperAdmin Workspace',
+          slug: 'superadmin-workspace',
+          owner_id: adminUser._id,
+          owner_telegram_id: adminUser.telegram_id,
+          plan_id: freePlan._id,
+          status: 'active',
+        });
+      }
     }
     logger.info('Superadmin initialized');
   }

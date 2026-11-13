@@ -438,11 +438,10 @@ export class TelegramService {
         bot.launch({
           allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member', 'pre_checkout_query'],
           dropPendingUpdates: true,
-        }).then(() => {
-          logger.info(`🤖 Telegram SaaS Bot @${config.telegram.botUsername} is LIVE and polling Telegram servers for commands & joins!`);
         }).catch((err) => {
           logger.error('Failed to launch Telegram bot in polling mode:', { error: err.message });
         });
+        logger.info(`🤖 Telegram SaaS Bot @${config.telegram.botUsername} is LIVE and polling Telegram servers for commands & joins!`);
       }
     } catch (err: any) {
       logger.error('Error initializing Telegram bot connection:', { error: err.message });
