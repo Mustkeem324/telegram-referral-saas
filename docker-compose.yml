@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: telegrowth-mongodb
+    restart: always
+    environment:
+      MONGO_INITDB_DATABASE: telegram_referral_saas
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: telegrowth-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: telegrowth-backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGO_URI: mongodb://mongodb:27017/telegram_referral_saas
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: super-secret-jwt-key-referral-saas-production-grade-256
+      ENCRYPTION_KEY: e9b3e1572c8423f04495c61285cb1f1c247ea7981cfda8391763e02d847a9ef8
+      TELEGRAM_BOT_TOKEN: 7891234567:AAFakeTokenForLocalTestingOnlySecureMockToken
+      TELEGRAM_BOT_USERNAME: tg_ref_saas_bot
+      TELEGRAM_WEBHOOK_SECRET: wh_secret_referral_saas_2026
+      FRONTEND_URL: http://localhost:3000
+      SUPERADMIN_TELEGRAM_ID: 123456789
+    depends_on:
+      - mongodb
+      - redis
+    ports:
+      - "4000:4000"
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: telegrowth-worker
+    restart: always
+    command: ["node", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongodb:27017/telegram_referral_saas
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: telegrowth-frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+
+  nginx:
+    image: nginx:alpine
+    container_name: telegrowth-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  mongo_data:
+  redis_data:
