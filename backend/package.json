@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon --watch src -e ts --exec ts-node src/server.ts",
     "worker": "ts-node src/worker.ts",
+    "bot": "ts-node src/bot.ts",
     "test": "jest --runInBand --detectOpenHandles --forceExit"
   },
   "dependencies": {

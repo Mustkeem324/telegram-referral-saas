@@ -367,6 +367,86 @@ export class TelegramService {
         logger.error('Error handling my_chat_member:', { error: err.message });
       }
     });
+
+    // Handle chat_member updates (member joins, leaves, invite link attribution)
+    bot.on('chat_member', async (ctx) => {
+      try {
+        const { ReferralService } = await import('../referrals/referral.service');
+        await ReferralService.processChatMemberUpdate(ctx.chatMember);
+      } catch (err: any) {
+        logger.error('Error handling chat_member in bot listener:', { error: err.message });
+      }
+    });
+
+    // Handle pre-checkout queries for Telegram Stars purchases
+    bot.on('pre_checkout_query', async (ctx) => {
+      try {
+        await ctx.answerPreCheckoutQuery(true);
+      } catch (err: any) {
+        logger.error('Error answering pre_checkout_query:', { error: err.message });
+      }
+    });
+
+    // Handle successful Telegram Stars payments
+    bot.on('message', async (ctx, next) => {
+      const sp = (ctx.message as any)?.successful_payment;
+      if (sp) {
+        try {
+          const { SubscriptionService } = await import('../subscriptions/subscription.service');
+          const payloadData = JSON.parse(sp.invoice_payload || '{}');
+          if (payloadData.workspaceId && payloadData.planCode) {
+            await SubscriptionService.processPaymentAndUpgrade({
+              workspaceId: payloadData.workspaceId,
+              userId: payloadData.userId,
+              planCode: payloadData.planCode,
+              billingCycle: payloadData.billingCycle || 'monthly',
+              provider: 'telegram_stars',
+              idempotencyKey: sp.telegram_payment_charge_id,
+              telegramChargeId: sp.telegram_payment_charge_id,
+            });
+            await ctx.reply('⭐ Thank you for your payment! Your subscription has been upgraded successfully.');
+          }
+        } catch (err: any) {
+          logger.error('Error processing successful_payment in bot:', { error: err.message });
+        }
+      }
+      return next();
+    });
+  }
+
+  /**
+   * Launch bot in polling or webhook mode
+   */
+  static async launchBot(): Promise<void> {
+    const bot = this.getBot();
+
+    if (!config.telegram.botToken || config.telegram.botToken.includes('FakeTokenForLocalTesting')) {
+      logger.warn('⚠️ No live TELEGRAM_BOT_TOKEN provided in backend/.env. Using mock bot credentials.');
+      logger.warn('👉 To connect your live Telegram bot: Paste your bot token from @BotFather into backend/.env (TELEGRAM_BOT_TOKEN=...)');
+      return;
+    }
+
+    try {
+      if (config.telegram.webhookUrl) {
+        await bot.telegram.setWebhook(config.telegram.webhookUrl, {
+          allowed_updates: ['message', 'callback_query', 'chat_member', 'my_chat_member', 'pre_checkout_query'],
+          secret_token: config.telegram.webhookSecret || undefined,
+        });
+        logger.info(`🤖 Telegram Bot Webhook registered: ${config.telegram.webhookUrl}`);
+      } else {
+        await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+        bot.launch({
+          allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member', 'pre_checkout_query'],
+          dropPendingUpdates: true,
+        }).then(() => {
+          logger.info(`🤖 Telegram SaaS Bot @${config.telegram.botUsername} is LIVE and polling Telegram servers for commands & joins!`);
+        }).catch((err) => {
+          logger.error('Failed to launch Telegram bot in polling mode:', { error: err.message });
+        });
+      }
+    } catch (err: any) {
+      logger.error('Error initializing Telegram bot connection:', { error: err.message });
+    }
   }
 
   /**

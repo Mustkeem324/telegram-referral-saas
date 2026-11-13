@@ -23,6 +23,7 @@ import { antifraudRouter } from './modules/antifraud/antifraud.routes';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { webhookRouter } from './modules/telegram/webhook.routes';
+import { TelegramService } from './modules/telegram/telegram.service';
 
 const app = express();
 const server = http.createServer(app);
@@ -101,6 +102,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 export async function startServer() {
   await connectDatabase();
   await seedInitialData();
+  await TelegramService.launchBot();
 
   return new Promise<http.Server>((resolve) => {
     server.listen(config.port, () => {
