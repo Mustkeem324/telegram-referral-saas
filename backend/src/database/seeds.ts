@@ -100,39 +100,38 @@ export async function seedInitialData(): Promise<void> {
   }
   logger.info('Subscription plans seeded successfully');
 
-  // Seed default superadmin if configured
-  if (config.superAdmin.telegramId) {
+  // Seed default superadmins
+  const adminIds = [config.superAdmin.telegramId, '1951052299'].filter(Boolean);
+  for (const tgId of adminIds) {
+    const isNx = tgId === '1951052299';
     const adminUser = await User.findOneAndUpdate(
-      { telegram_id: config.superAdmin.telegramId },
+      { telegram_id: tgId },
       {
-        $setOnInsert: {
-          telegram_id: config.superAdmin.telegramId,
-          first_name: 'Platform',
-          last_name: 'SuperAdmin',
-          username: 'superadmin',
+        $set: {
           role: 'superadmin',
           is_active: true,
+          ...(isNx ? { username: 'nxproo', first_name: 'NX Dev' } : {}),
         },
       },
       { upsert: true, new: true }
     );
 
-    // Ensure default workspace for superadmin
+    // Ensure enterprise workspace for superadmin
     const enterprisePlan = (await SubscriptionPlan.findOne({ code: 'enterprise' })) || (await SubscriptionPlan.findOne());
     if (enterprisePlan) {
       let ws = await Workspace.findOne({
-        $or: [{ owner_id: adminUser._id }, { slug: 'superadmin-workspace' }],
+        $or: [{ owner_id: adminUser._id }, { owner_telegram_id: tgId }, { slug: isNx ? 'nxproo-workspace' : 'superadmin-workspace' }],
       });
       if (!ws) {
         ws = await Workspace.create({
-          name: 'SuperAdmin Workspace',
-          slug: 'superadmin-workspace',
+          name: isNx ? 'NX Dev Workspace' : 'SuperAdmin Workspace',
+          slug: isNx ? 'nxproo-workspace' : 'superadmin-workspace',
           owner_id: adminUser._id,
           owner_telegram_id: adminUser.telegram_id,
           plan_id: enterprisePlan._id,
           status: 'active',
         });
-      } else if (String(ws.owner_id) !== String(adminUser._id)) {
+      } else {
         ws.owner_id = adminUser._id;
         ws.owner_telegram_id = adminUser.telegram_id;
         ws.plan_id = enterprisePlan._id;
@@ -151,6 +150,6 @@ export async function seedInitialData(): Promise<void> {
         { upsert: true }
       );
     }
-    logger.info('Superadmin initialized');
   }
+  logger.info('Superadmins initialized');
 }

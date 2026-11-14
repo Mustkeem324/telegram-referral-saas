@@ -216,6 +216,25 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           </a>
         </div>
       </div>
+
+      {/* Developer & Admin Support */}
+      <div className="px-3.5 pb-3 bg-slate-50/80 dark:bg-navy-900/60">
+        <a
+          href="https://t.me/nxproo"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center justify-between p-2.5 rounded-xl bg-gradient-to-r from-electric/10 via-purple-500/10 to-transparent border border-electric/25 hover:border-electric/50 text-slate-800 dark:text-slate-200 transition-all group shadow-sm"
+        >
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyanAccent animate-pulse" />
+            <span className="text-[11px] font-bold">Developer Support</span>
+          </div>
+          <span className="text-[10px] font-mono text-electric group-hover:underline flex items-center gap-1">
+            @nxproo
+            <ExternalLink className="w-2.5 h-2.5" />
+          </span>
+        </a>
+      </div>
     </aside>
   );
 
