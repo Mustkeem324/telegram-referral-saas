@@ -1066,7 +1066,8 @@ export class TelegramService {
         `📌 <b>Simple 3-Step Guide:</b>\n` +
         `1️⃣ Tap <b>"🚀 Share with Friends"</b> below.\n` +
         `2️⃣ Pick any friend or Telegram group.\n` +
-        `3️⃣ When they join, your points are automatically credited!`;
+        `3️⃣ When they join, your points are automatically credited!\n\n` +
+        `ℹ️ <b>Important:</b> Your invite link <b>never expires</b> and allows <b>instant direct join</b> (no admin approval needed). If you tap your own link, Telegram will show <i>"Link Expired"</i> because you are already inside this group. Share it with friends or test with another account!`;
 
       await this.safeReply(ctx, text, {
         reply_markup: {
@@ -1438,6 +1439,7 @@ export class TelegramService {
         name: params.name,
         member_limit: params.memberLimit,
         expire_date: params.expireDate,
+        creates_join_request: false,
       });
 
       return invite.invite_link;
