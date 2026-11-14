@@ -113,6 +113,8 @@ export const api = {
   getAdminUsers: (page = 1, search = '') => apiRequest(`/admin/users?page=${page}&search=${search}`),
   setAdminUserStatus: (userId: string, is_active: boolean, ban_reason?: string) =>
     apiRequest(`/admin/users/${userId}/status`, { method: 'POST', body: JSON.stringify({ is_active, ban_reason }) }),
+  setAdminUserRole: (userId: string, role: 'superadmin' | 'user') =>
+    apiRequest(`/admin/users/${userId}/role`, { method: 'POST', body: JSON.stringify({ role }) }),
   getAdminHealth: () => apiRequest('/admin/health'),
   getAdminTickets: () => apiRequest('/admin/tickets'),
   replyAdminTicket: (ticketId: string, message: string, status?: string) =>

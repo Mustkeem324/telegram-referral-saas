@@ -70,7 +70,7 @@ export default function BillingPage() {
       <div className="space-y-8 max-w-6xl">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Subscription & SaaS Plans</h1>
+            <h1 className="text-2xl font-bold text-white tracking-tight">Subscription & Growth Plans</h1>
             <p className="text-sm text-slate-400 mt-1">
               Backend-enforced quotas. Upgrade seamlessly using Telegram Stars ⭐ or Card.
             </p>

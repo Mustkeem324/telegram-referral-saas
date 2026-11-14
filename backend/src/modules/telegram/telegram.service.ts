@@ -171,7 +171,7 @@ export class TelegramService {
             await TelegramService.safeReply(
               ctx,
               `🔐 <b>Authentication Confirmed!</b>\n\n` +
-              `Welcome, <b>${firstName}</b>! You are now securely logged into <b>TeleGrowth SaaS</b>.\n\n` +
+              `Welcome, <b>${firstName}</b>! You are now securely logged into <b>TeleGrowth</b>.\n\n` +
               `Your browser dashboard will update automatically, or visit: ${config.frontendUrl}/dashboard`
             );
             return;
@@ -199,14 +199,14 @@ export class TelegramService {
         const dashboardUrl = `${config.frontendUrl}/dashboard`;
         const firstName = TelegramService.escapeHtml(from.first_name || 'Creator');
         const welcomeText =
-          `👋 Welcome to <b>TeleGrowth SaaS</b>, ${firstName}!\n\n` +
+          `👋 Welcome to <b>TeleGrowth</b>, ${firstName}!\n\n` +
           `🚀 Supercharge your channels & groups with viral growth campaigns, referral milestones, automated rewards, and provably-fair giveaways.\n\n` +
           `🖥 <b>Web Dashboard:</b> ${dashboardUrl}\n\n` +
           `<b>Available Commands:</b>\n` +
           `• /dashboard — Access your management dashboard\n` +
           `• /campaigns — List and view your active campaigns\n` +
           `• /create — Launch a new referral or giveaway campaign\n` +
-          `• /subscription — Manage your SaaS plan & upgrade with Telegram Stars\n` +
+          `• /subscription — Manage your growth plan & upgrade with Telegram Stars\n` +
           `• /analytics — Check growth metrics and referral stats\n` +
           `• /help — Setup instructions and bot permissions guide\n` +
           `• /support — Create a support inquiry\n` +
@@ -228,7 +228,7 @@ export class TelegramService {
       } catch (err: any) {
         logger.error('Error handling /start:', { error: err.message, stack: err.stack });
         try {
-          await ctx.reply(`👋 Welcome to TeleGrowth SaaS! Open your dashboard at: ${config.frontendUrl}/dashboard`);
+          await ctx.reply(`👋 Welcome to TeleGrowth! Open your dashboard at: ${config.frontendUrl}/dashboard`);
         } catch (fallbackErr) {
           logger.error('Fallback reply failed:', fallbackErr);
         }
@@ -566,7 +566,7 @@ export class TelegramService {
         }).catch((err) => {
           logger.error('Failed to launch Telegram bot in polling mode:', { error: err.message });
         });
-        logger.info(`🤖 Telegram SaaS Bot @${config.telegram.botUsername} is LIVE and polling Telegram servers for commands & joins!`);
+        logger.info(`🤖 Central Telegram Bot @${config.telegram.botUsername} is LIVE and polling Telegram servers for commands & joins!`);
       }
     } catch (err: any) {
       logger.error('Error initializing Telegram bot connection:', { error: err.message });

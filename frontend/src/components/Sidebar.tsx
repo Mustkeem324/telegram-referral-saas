@@ -33,7 +33,7 @@ export function Sidebar() {
   ];
 
   if (user?.role === 'superadmin') {
-    navigation.push({ name: 'Super Admin', href: '/admin', icon: ShieldCheck });
+    navigation.push({ name: 'Platform Admin', href: '/admin', icon: ShieldCheck });
   }
 
   return (
@@ -45,7 +45,7 @@ export function Sidebar() {
         </div>
         <div>
           <span className="font-bold text-white tracking-tight text-base block leading-none">TeleGrowth</span>
-          <span className="text-[10px] text-sky-400 font-semibold uppercase tracking-wider">Referral & Giveaway SaaS</span>
+          <span className="text-[10px] text-sky-400 font-semibold uppercase tracking-wider">Growth & Referral Engine</span>
         </div>
       </div>
 
@@ -96,15 +96,15 @@ export function Sidebar() {
       <div className="p-4 border-t border-slate-800 bg-slate-900/60">
         <div className="bg-slate-800/70 border border-slate-700/60 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-300">Central SaaS Bot</span>
+            <span className="text-xs font-semibold text-slate-300">Central Telegram Bot</span>
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
           </div>
-          <p className="text-[11px] text-slate-400 leading-snug">@tg_ref_saas_bot is active with invite attribution listening</p>
+          <p className="text-[11px] text-slate-400 leading-snug">@TeleGrowthnxbot is live with invite attribution active</p>
           <a
-            href="https://t.me/tg_ref_saas_bot"
+            href="https://t.me/TeleGrowthnxbot"
             target="_blank"
             rel="noreferrer"
             className="mt-2.5 text-xs text-sky-400 hover:text-sky-300 flex items-center gap-1 font-medium"

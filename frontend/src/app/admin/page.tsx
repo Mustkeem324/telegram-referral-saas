@@ -16,6 +16,14 @@ import {
   UserCheck,
   MessageSquare,
   Send,
+  Shield,
+  KeyRound,
+  CheckCircle2,
+  Cpu,
+  Layers,
+  Sparkles,
+  ArrowUpRight,
+  ExternalLink,
 } from 'lucide-react';
 
 export default function SuperAdminPage() {
@@ -27,8 +35,7 @@ export default function SuperAdminPage() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Ban Modal
-  const [selectedUser, setSelectedUser] = useState<any>(null);
+  // Ban Action
   const [banReason, setBanReason] = useState('Abuse of platform terms');
 
   // Support reply
@@ -65,7 +72,16 @@ export default function SuperAdminPage() {
     try {
       await api.setAdminUserStatus(targetUser._id, !targetUser.is_active, banReason);
       await loadAdminData();
-      setSelectedUser(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleUserRole = async (targetUser: any) => {
+    try {
+      const nextRole = targetUser.role === 'superadmin' ? 'user' : 'superadmin';
+      await api.setAdminUserRole(targetUser._id, nextRole);
+      await loadAdminData();
     } catch (err) {
       console.error(err);
     }
@@ -87,11 +103,13 @@ export default function SuperAdminPage() {
     return (
       <DashboardLayout>
         <div className="py-24 text-center">
-          <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto mb-3 border border-rose-500/20">
-            <Lock className="w-6 h-6" />
+          <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 flex items-center justify-center mx-auto mb-4 border border-rose-500/20 shadow-lg shadow-rose-500/10">
+            <Lock className="w-7 h-7" />
           </div>
-          <h2 className="text-lg font-bold text-white">Platform Super Admin Restricted</h2>
-          <p className="text-xs text-slate-400 mt-1">You must be authenticated with the superadmin role to access platform operations.</p>
+          <h2 className="text-xl font-bold text-white">Platform Super Admin Restricted</h2>
+          <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
+            This console is restricted to the Platform Owner and authorized administrators. Authenticate with an approved Telegram ID to access.
+          </p>
         </div>
       </DashboardLayout>
     );
@@ -101,48 +119,90 @@ export default function SuperAdminPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8 max-w-6xl">
-        <div className="flex items-center justify-between">
+      <div className="space-y-8 max-w-6xl pb-12">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-white tracking-tight">Platform Super Admin Console</h1>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                Superuser Access
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-2xl font-bold text-white tracking-tight">Platform Administration Console</h1>
+              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1 shadow-sm shadow-amber-500/10">
+                <Shield className="w-3 h-3 text-amber-400" /> Superuser
               </span>
             </div>
             <p className="text-sm text-slate-400 mt-1">
-              Global tenant monitoring, user restriction controls, payment totals, and system health.
+              Global tenant management, user permissions, fraud intervention, and system health.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={loadAdminData}
+              disabled={loading}
+              className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-300 hover:text-white transition-all"
+            >
+              Refresh Data
+            </button>
+          </div>
+        </div>
+
+        {/* How Admin Access Works Info Banner */}
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-amber-950/20 border border-amber-500/20 shadow-xl relative overflow-hidden">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
+              <KeyRound className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 text-xs">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                How Platform Admin Access Works
+              </h3>
+              <p className="text-slate-300 leading-relaxed">
+                Superadmin access is bound directly to verified Telegram accounts. Your account (Telegram ID: <span className="font-mono text-amber-300 font-bold">{user?.telegram_id}</span>) is recognized as the platform owner.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 bg-slate-800/60 p-2 rounded-lg border border-slate-700/60">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Automatic Telegram ID authentication</span>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-800/60 p-2 rounded-lg border border-slate-700/60">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Global bypass to all tenant workspaces</span>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-800/60 p-2 rounded-lg border border-slate-700/60">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>1-click user promotion & ban controls</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Top 4 Global Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
             <span className="text-xs uppercase font-semibold text-slate-400">Total Registered Users</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-white">{stats.totalUsers || 0}</span>
-              <span className="text-xs text-emerald-400">{stats.activeUsers || 0} active</span>
+              <span className="text-xs font-semibold text-emerald-400">{stats.activeUsers || 0} active</span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
             <span className="text-xs uppercase font-semibold text-slate-400">Total Workspaces</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-sky-400">{stats.totalWorkspaces || 0}</span>
-              <span className="text-xs text-slate-400">{stats.activeSubscriptions || 0} paid subs</span>
+              <span className="text-xs text-slate-400">{stats.activeSubscriptions || 0} active plans</span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <span className="text-xs uppercase font-semibold text-slate-400">Total Campaigns Created</span>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+            <span className="text-xs uppercase font-semibold text-slate-400">Total Campaigns</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-amber-400">{stats.totalCampaigns || 0}</span>
-              <span className="text-xs text-slate-400">{stats.totalReferrals || 0} refs</span>
+              <span className="text-xs text-slate-400">{stats.totalReferrals || 0} referrals</span>
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
             <span className="text-xs uppercase font-semibold text-slate-400">Unresolved Fraud Alerts</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-bold text-rose-400">{stats.unresolvedFraudEvents || 0}</span>
@@ -151,11 +211,14 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
-        {/* Global User Management */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Users className="w-4 h-4 text-sky-400" /> Platform User Directory & Restrictions
-          </h2>
+        {/* Global User Management & Role Promotion */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+              <Users className="w-4 h-4 text-sky-400" /> Platform User Directory & Permission Controls
+            </h2>
+            <span className="text-xs text-slate-400">{usersList.length} users listed</span>
+          </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -165,17 +228,29 @@ export default function SuperAdminPage() {
                   <th className="py-2.5 px-3">Name</th>
                   <th className="py-2.5 px-3">Username</th>
                   <th className="py-2.5 px-3">Role</th>
-                  <th className="py-2.5 px-3">Account Status</th>
-                  <th className="py-2.5 px-3 rounded-r text-right">Action</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 rounded-r text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {usersList.map((u) => (
-                  <tr key={u._id} className="hover:bg-slate-800/30">
+                  <tr key={u._id} className="hover:bg-slate-800/30 transition-colors">
                     <td className="py-3 px-3 font-mono text-slate-300 font-semibold">{u.telegram_id}</td>
-                    <td className="py-3 px-3 text-white font-medium">{u.first_name} {u.last_name || ''}</td>
+                    <td className="py-3 px-3 text-white font-medium">
+                      {u.first_name} {u.last_name || ''}
+                    </td>
                     <td className="py-3 px-3 text-sky-400 font-mono">{u.username ? `@${u.username}` : '—'}</td>
-                    <td className="py-3 px-3 uppercase text-[10px] font-bold text-slate-400">{u.role}</td>
+                    <td className="py-3 px-3">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                          u.role === 'superadmin'
+                            ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        {u.role}
+                      </span>
+                    </td>
                     <td className="py-3 px-3">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -187,17 +262,32 @@ export default function SuperAdminPage() {
                         {u.is_active ? 'Active' : 'Suspended'}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-right">
+                    <td className="py-3 px-3 text-right space-x-2">
+                      {/* Role Toggle */}
+                      {u.telegram_id !== user?.telegram_id && (
+                        <button
+                          onClick={() => toggleUserRole(u)}
+                          className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors border ${
+                            u.role === 'superadmin'
+                              ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                              : 'bg-amber-500/10 text-amber-300 border-amber-500/30 hover:bg-amber-500/20'
+                          }`}
+                        >
+                          {u.role === 'superadmin' ? 'Demote to User' : 'Make Admin'}
+                        </button>
+                      )}
+
+                      {/* Ban / Unban Toggle */}
                       {u.role !== 'superadmin' && (
                         <button
                           onClick={() => toggleUserBan(u)}
-                          className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                          className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-colors border ${
                             u.is_active
-                              ? 'bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/30'
-                              : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/30'
+                              ? 'bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 border-rose-500/30'
+                              : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border-emerald-500/30'
                           }`}
                         >
-                          {u.is_active ? 'Suspend Account' : 'Reactivate'}
+                          {u.is_active ? 'Suspend' : 'Reactivate'}
                         </button>
                       )}
                     </td>
@@ -208,8 +298,46 @@ export default function SuperAdminPage() {
           </div>
         </div>
 
+        {/* System Health Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+            <span className="text-xs uppercase font-semibold text-slate-400 flex items-center gap-1.5">
+              <Database className="w-3.5 h-3.5 text-emerald-400" /> MongoDB Replica Set
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-sm font-bold text-white">
+                {systemHealth?.database?.status === 'connected' ? 'Connected (ACID Active)' : 'Healthy'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500">Replica Set rs0 with MongoDB transactions enabled</p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+            <span className="text-xs uppercase font-semibold text-slate-400 flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5 text-sky-400" /> Background Queues
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-sky-400 animate-pulse"></span>
+              <span className="text-sm font-bold text-white">BullMQ Worker Live</span>
+            </div>
+            <p className="text-[11px] text-slate-500">Retention audits & reward distribution processing</p>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+            <span className="text-xs uppercase font-semibold text-slate-400 flex items-center gap-1.5">
+              <Activity className="w-3.5 h-3.5 text-amber-400" /> Telegram Central Bot
+            </span>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="text-sm font-bold text-white">@TeleGrowthnxbot Live</span>
+            </div>
+            <p className="text-[11px] text-slate-500">Long-polling active for chat joins & auth clicks</p>
+          </div>
+        </div>
+
         {/* Support Tickets Inbox */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4 shadow-sm">
           <h2 className="text-sm font-semibold text-white flex items-center gap-2">
             <MessageSquare className="w-4 h-4 text-emerald-400" /> Support Inquiries ({tickets.length})
           </h2>
@@ -222,7 +350,7 @@ export default function SuperAdminPage() {
                 <div key={t._id} className="p-4 rounded-xl bg-slate-800/40 border border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-white">{t.subject}</span>
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-800 text-sky-400">
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-800 text-sky-400 border border-slate-700">
                       {t.status}
                     </span>
                   </div>
@@ -237,66 +365,37 @@ export default function SuperAdminPage() {
                         placeholder="Write support response..."
                         value={replyText}
                         onChange={(e) => setReplyText(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
                       />
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() => setReplyTicketId(null)}
-                          className="px-3 py-1 rounded bg-slate-800 text-slate-400 text-xs"
+                          className="px-3 py-1 rounded bg-slate-800 text-slate-400 text-xs hover:text-white"
                         >
                           Cancel
                         </button>
                         <button
                           onClick={() => handleReplyTicket(t._id)}
-                          className="px-3 py-1 rounded bg-sky-500 text-white text-xs font-semibold flex items-center gap-1"
+                          className="px-3 py-1 rounded bg-sky-500 hover:bg-sky-400 text-white text-xs font-semibold"
                         >
-                          <Send className="w-3 h-3" /> Send Reply via Telegram
+                          Send Response
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setReplyTicketId(t._id)}
-                      className="text-xs text-sky-400 hover:text-sky-300 font-medium inline-block mt-1"
-                    >
-                      Reply to User →
-                    </button>
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        onClick={() => setReplyTicketId(t._id)}
+                        className="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-1"
+                      >
+                        Reply to User <Send className="w-3 h-3" />
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </div>
-
-        {/* System & Database Health */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2 mb-4">
-            <Database className="w-4 h-4 text-sky-400" /> Infrastructure & Webhook Event Monitor
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div className="bg-slate-800/40 p-3.5 rounded-lg border border-slate-800">
-              <span className="text-slate-400 block">Database Status</span>
-              <span className="text-emerald-400 font-bold text-sm block mt-1">
-                {systemHealth?.database?.status?.toUpperCase() || 'CONNECTED'}
-              </span>
-              <span className="text-[10px] text-slate-500">MongoDB ReplicaSet rs0</span>
-            </div>
-
-            <div className="bg-slate-800/40 p-3.5 rounded-lg border border-slate-800">
-              <span className="text-slate-400 block">Server Node Runtime</span>
-              <span className="text-white font-bold text-sm block mt-1">
-                {systemHealth?.system?.nodeVersion || 'v22.23.2'}
-              </span>
-              <span className="text-[10px] text-slate-500">Node.js / TypeScript</span>
-            </div>
-
-            <div className="bg-slate-800/40 p-3.5 rounded-lg border border-slate-800">
-              <span className="text-slate-400 block">Redis & Queue Worker</span>
-              <span className="text-emerald-400 font-bold text-sm block mt-1">ACTIVE</span>
-              <span className="text-[10px] text-slate-500">BullMQ Audit Queue</span>
-            </div>
-          </div>
         </div>
       </div>
     </DashboardLayout>

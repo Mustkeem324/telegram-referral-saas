@@ -106,7 +106,7 @@ export async function startServer() {
 
   return new Promise<http.Server>((resolve) => {
     server.listen(config.port, () => {
-      logger.info(`🚀 Telegram Referral SaaS Server running on http://localhost:${config.port}`);
+      logger.info(`🚀 TeleGrowth Server running on http://localhost:${config.port}`);
       resolve(server);
     });
   });

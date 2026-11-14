@@ -116,9 +116,9 @@ export default function ChannelsPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
             <div className="bg-slate-800/50 border border-slate-700/60 p-4 rounded-lg">
               <span className="w-6 h-6 rounded-full bg-sky-500/20 text-sky-400 font-bold flex items-center justify-center mb-2">1</span>
-              <p className="font-semibold text-white">Add Central SaaS Bot</p>
+              <p className="font-semibold text-white">Add Central Telegram Bot</p>
               <p className="text-slate-400 mt-1">
-                Add <span className="text-sky-300 font-mono">@tg_ref_saas_bot</span> as an <strong>Administrator</strong> to your Telegram Channel or Supergroup.
+                Add <span className="text-sky-300 font-mono">@TeleGrowthnxbot</span> as an <strong>Administrator</strong> to your Telegram Channel or Supergroup.
               </p>
             </div>
 

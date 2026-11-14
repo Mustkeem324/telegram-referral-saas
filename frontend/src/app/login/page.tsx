@@ -92,7 +92,7 @@ export default function LoginPage() {
         </div>
 
         <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          TeleGrowth SaaS
+          TeleGrowth
         </h1>
         <p className="mt-2 text-sm text-slate-400">
           Enterprise Telegram Referral Tracking & Provably-Fair Giveaways
@@ -173,7 +173,7 @@ export default function LoginPage() {
 
         {/* Footer info */}
         <div className="text-center mt-6 text-xs text-slate-500">
-          Connected to Central SaaS Bot <a href="https://t.me/TeleGrowthnxbot" target="_blank" rel="noreferrer" className="text-sky-400 hover:underline font-mono">@TeleGrowthnxbot</a>
+          Connected to Central Telegram Bot <a href="https://t.me/TeleGrowthnxbot" target="_blank" rel="noreferrer" className="text-sky-400 hover:underline font-mono">@TeleGrowthnxbot</a>
         </div>
       </div>
     </div>

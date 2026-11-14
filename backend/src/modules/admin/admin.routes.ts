@@ -141,6 +141,35 @@ router.post('/users/:userId/status', async (req, res) => {
   }
 });
 
+// Promote to superadmin or update role
+router.post('/users/:userId/role', async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['superadmin', 'user'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be superadmin or user' });
+    }
+    const user = await User.findById(req.params.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.role = role;
+    await user.save();
+
+    await AuditLog.create({
+      actor_id: req.user!._id,
+      actor_telegram_id: req.user!.telegram_id,
+      actor_type: 'admin',
+      action: 'user_role_updated',
+      resource_type: 'user',
+      resource_id: user._id.toString(),
+      diff: { role },
+    });
+
+    res.json({ success: true, user });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Manage Plans (Update pricing, limits, features)
 router.put('/plans/:planId', async (req, res) => {
   try {
