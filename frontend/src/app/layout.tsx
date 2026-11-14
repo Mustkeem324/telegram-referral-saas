@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '../lib/AuthContext';
+import { ThemeProvider } from '../lib/ThemeContext';
 
 export const metadata: Metadata = {
   title: 'TeleGrowth — Telegram Referral & Growth Platform',
@@ -17,8 +18,10 @@ export default function RootLayout({
       <head>
         <script src="https://telegram.org/js/telegram-web-app.js" async></script>
       </head>
-      <body className="bg-slate-950 text-slate-100 min-h-screen">
-        <AuthProvider>{children}</AuthProvider>
+      <body className="min-h-screen">
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -3,7 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { useAuth } from '../lib/AuthContext';
-import { LogOut, Shield, Menu, Radio } from 'lucide-react';
+import { useTheme } from '../lib/ThemeContext';
+import { LogOut, Shield, Menu, Radio, Sun, Moon } from 'lucide-react';
 
 interface NavbarProps {
   onToggleMobileMenu?: () => void;
@@ -11,6 +12,7 @@ interface NavbarProps {
 
 export function Navbar({ onToggleMobileMenu }: NavbarProps) {
   const { user, logout, activeWorkspace } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="h-16 border-b border-navy-700/80 bg-navy-900/80 backdrop-blur-xl px-4 sm:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
@@ -38,7 +40,27 @@ export function Navbar({ onToggleMobileMenu }: NavbarProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Dark / Light Mode Toggle Button */}
+        <button
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          aria-label="Toggle theme"
+          className="p-2 rounded-xl bg-navy-800 border border-navy-700/80 text-slate-400 hover:text-white transition-all shadow-sm hover:border-slate-600 flex items-center gap-1.5"
+        >
+          {theme === 'dark' ? (
+            <>
+              <Sun className="w-4 h-4 text-amber-400 transition-transform hover:rotate-45" />
+              <span className="text-[10px] font-semibold text-slate-300 hidden md:inline">Light</span>
+            </>
+          ) : (
+            <>
+              <Moon className="w-4 h-4 text-electric transition-transform hover:-rotate-12" />
+              <span className="text-[10px] font-semibold text-slate-700 hidden md:inline">Dark</span>
+            </>
+          )}
+        </button>
+
         {/* Super Admin Quick Console Badge */}
         {user?.role === 'superadmin' && (
           <Link

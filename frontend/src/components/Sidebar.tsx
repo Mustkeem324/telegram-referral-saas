@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/AuthContext';
+import { useTheme } from '../lib/ThemeContext';
 import {
   LayoutDashboard,
   Megaphone,
@@ -18,6 +19,8 @@ import {
   X,
   Sparkles,
   BookOpen,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +31,7 @@ interface SidebarProps {
 export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, workspaces, activeWorkspace, switchWorkspace } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -136,6 +140,28 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* Theme Toggle Pill */}
+      <div className="px-4 py-2.5 border-t border-navy-700/60 bg-navy-900/40 flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-slate-400">Appearance</span>
+        <button
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-navy-800 border border-navy-700 text-xs font-semibold text-slate-300 hover:text-white transition shadow-sm hover:border-slate-600"
+        >
+          {theme === 'dark' ? (
+            <>
+              <Sun className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-[11px]">Light Mode</span>
+            </>
+          ) : (
+            <>
+              <Moon className="w-3.5 h-3.5 text-electric" />
+              <span className="text-[11px]">Dark Mode</span>
+            </>
+          )}
+        </button>
+      </div>
 
       {/* Central Bot Status Card */}
       <div className="p-3.5 border-t border-navy-700/80 bg-navy-900/60">

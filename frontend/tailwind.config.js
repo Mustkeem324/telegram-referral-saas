@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -9,14 +10,14 @@ module.exports = {
     extend: {
       colors: {
         navy: {
-          950: '#070B14',
-          900: '#0B1120', // Main background
-          850: '#0F172A',
-          800: '#151F32', // Premium card background
-          750: '#19253C', // Card hover / elevated
-          700: '#1E293B', // Border
-          650: '#22324B', // Border hover
-          600: '#2A3B56', // Active border
+          950: 'rgb(var(--color-navy-950) / <alpha-value>)',
+          900: 'rgb(var(--color-navy-900) / <alpha-value>)',
+          850: 'rgb(var(--color-navy-850) / <alpha-value>)',
+          800: 'rgb(var(--color-navy-800) / <alpha-value>)',
+          750: 'rgb(var(--color-navy-750) / <alpha-value>)',
+          700: 'rgb(var(--color-navy-700) / <alpha-value>)',
+          650: 'rgb(var(--color-navy-650) / <alpha-value>)',
+          600: 'rgb(var(--color-navy-600) / <alpha-value>)',
         },
         electric: {
           DEFAULT: '#18A8F8', // Electric blue primary accent
@@ -52,7 +53,7 @@ module.exports = {
         '3xl': '20px',
       },
       boxShadow: {
-        'card': '0 4px 20px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05)',
+        'card': 'var(--color-card-shadow, 0 4px 20px -2px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.05))',
         'card-hover': '0 10px 30px -4px rgba(24, 168, 248, 0.15), 0 0 0 1px rgba(24, 168, 248, 0.3)',
         'glow-blue': '0 0 35px -5px rgba(24, 168, 248, 0.25)',
         'glow-cyan': '0 0 35px -5px rgba(34, 197, 245, 0.25)',
