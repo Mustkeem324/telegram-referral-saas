@@ -68,8 +68,13 @@ export class TelegramService {
    */
   private static getMainMenuKeyboard(): any {
     const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
+    const miniAppUrl = `${config.frontendUrl}/miniapp`;
     return {
       inline_keyboard: [
+        [
+          { text: '📱 Launch Mini App', web_app: { url: miniAppUrl } },
+          { text: '🎁 Mystery Vault', callback_data: 'cb_mystery_box' },
+        ],
         [
           { text: '📖 How It Works', callback_data: 'cb_guide_main' },
           { text: '🔗 My Invite Link', callback_data: 'cb_get_link' },
@@ -344,6 +349,16 @@ export class TelegramService {
     // /faq
     bot.command('faq', async (ctx) => {
       await TelegramService.sendFAQ(ctx);
+    });
+
+    // /box & /mysterybox & /chest
+    bot.command(['box', 'mysterybox', 'chest'], async (ctx) => {
+      await TelegramService.sendMysteryBox(ctx);
+    });
+
+    // /app & /miniapp
+    bot.command(['app', 'miniapp'], async (ctx) => {
+      await TelegramService.sendMiniApp(ctx);
     });
 
     // /custombot & /bot & /mybot
@@ -629,6 +644,20 @@ export class TelegramService {
     bot.action('cb_faq', async (ctx) => {
       await ctx.answerCbQuery();
       await TelegramService.sendFAQ(ctx);
+    });
+
+    bot.action('cb_mystery_box', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendMysteryBox(ctx);
+    });
+
+    bot.action('cb_open_box', async (ctx) => {
+      await TelegramService.handleOpenBoxAction(ctx);
+    });
+
+    bot.action('cb_miniapp', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendMiniApp(ctx);
     });
 
     bot.action('cb_custom_bot', async (ctx) => {
@@ -1815,6 +1844,111 @@ export class TelegramService {
       );
     } catch (err: any) {
       await this.safeReply(ctx, `⚠️ Disconnect error: ${err.message}`);
+    }
+  }
+
+  /**
+   * Send Mini-App launcher message
+   */
+  static async sendMiniApp(ctx: Context): Promise<void> {
+    const miniAppUrl = `${config.frontendUrl}/miniapp`;
+    const text =
+      `📱 <b>TeleGrowth Mobile Mini App 2.0</b>\n\n` +
+      `Experience the next-gen viral referral dashboard directly inside Telegram with real-time haptic feedback, live mystery vaults, and instant leaderboards:\n\n` +
+      `🌐 <code>${miniAppUrl}</code>`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🚀 Launch Mini App', web_app: { url: miniAppUrl } }],
+          [{ text: '🎁 Open Mystery Box', callback_data: 'cb_open_box' }],
+          [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Send Gamified Mystery Vault overview
+   */
+  static async sendMysteryBox(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const { GamificationService } = await import('../gamification/gamification.service');
+      const profile = await GamificationService.getUserProfile(tgId);
+      const miniAppUrl = `${config.frontendUrl}/miniapp`;
+
+      const text =
+        `🎁 <b>TeleGrowth Mystery Vault & Loot Chests</b>\n\n` +
+        `Unlock secret loot boxes by inviting friends to the community! Every <b>3 verified referrals</b> gives you a Mystery Chest.\n\n` +
+        `📦 <b>Vault Status:</b>\n` +
+        `• Unopened Chests: <b>${profile.unopenedCount} Ready to Open</b>\n` +
+        `• Progress to Next Chest: <b>${profile.progressToNextBox.current}/3 Invites</b> (${profile.progressToNextBox.percent}%)\n` +
+        `• Active Viral Streak: <b>🔥 ${profile.streakDays} Days</b>\n\n` +
+        `💎 <b>Potential Loot:</b>\n` +
+        `• <b>Cyber Chest:</b> ⚡ 3x Point Multiplier Boost\n` +
+        `• <b>Gold Chest:</b> 💎 +100 Ultra Points Jackpot\n` +
+        `• <b>Silver/Bronze:</b> +25 to +50 Growth Points & Badges\n\n` +
+        `<i>Tap below to crack open your available chest or launch the Mini-App!</i>`;
+
+      const buttons: any[] = [];
+      if (profile.unopenedCount > 0) {
+        buttons.push([{ text: `🎁 Open Mystery Chest (${profile.unopenedCount} ready)`, callback_data: 'cb_open_box' }]);
+      }
+      buttons.push([
+        { text: '📱 Open in Mini App', web_app: { url: miniAppUrl } },
+        { text: '🔗 Get Invite Link', callback_data: 'cb_get_link' },
+      ]);
+      buttons.push([{ text: '◀️ Main Menu', callback_data: 'cb_menu' }]);
+
+      await this.safeReply(ctx, text, {
+        reply_markup: { inline_keyboard: buttons },
+      });
+    } catch (err: any) {
+      logger.error('Error in sendMysteryBox:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Could not load Mystery Vault right now: ${err.message}`);
+    }
+  }
+
+  /**
+   * Handle Open Mystery Box Action
+   */
+  static async handleOpenBoxAction(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const { GamificationService } = await import('../gamification/gamification.service');
+      const result = await GamificationService.openBox(tgId);
+
+      if (!result.success || !result.box) {
+        await ctx.answerCbQuery('❌ No unopened chests available!', { show_alert: true });
+        return;
+      }
+
+      await ctx.answerCbQuery('🎉 Chest Unlocked!', { show_alert: false });
+
+      const celebratoryMsg =
+        `🎉 <b>MYSTERY CHEST UNLOCKED!</b> 🎁\n\n` +
+        `You opened a <b>${result.box.box_tier.toUpperCase()} TIER</b> chest and revealed:\n\n` +
+        `✨ <b>${result.box.reward_title}</b> ✨\n\n` +
+        `💰 <b>Your reward has been credited to your account balance!</b>\n` +
+        `Invite 3 more friends to unlock your next chest!`;
+
+      await this.safeReply(ctx, celebratoryMsg, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🎁 View Vault', callback_data: 'cb_mystery_box' }],
+            [{ text: '🔗 Share Link to Earn More', callback_data: 'cb_get_link' }],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+          ],
+        },
+      });
+    } catch (err: any) {
+      logger.error('Error opening mystery box:', { error: err.message });
+      await ctx.answerCbQuery('⚠️ Error opening chest', { show_alert: true });
     }
   }
 }

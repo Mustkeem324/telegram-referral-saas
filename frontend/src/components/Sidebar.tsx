@@ -22,6 +22,7 @@ import {
   BookOpen,
   Sun,
   Moon,
+  Smartphone,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -52,6 +53,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
     { name: 'Giveaways & Raffles', href: '/giveaways', icon: Gift },
     { name: 'Anti-Fraud & Risk', href: '/antifraud', icon: ShieldAlert },
     { name: 'Subscription & Plans', href: '/billing', icon: CreditCard },
+    { name: 'Telegram Mini App', href: '/miniapp', icon: Smartphone, badge: 'TWA 2.0' },
   ];
 
   if (user?.role === 'superadmin') {
@@ -138,6 +140,12 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
                 />
                 <span>{item.name}</span>
               </div>
+
+              {(item as any).badge && !isActive && (
+                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-cyanAccent/15 text-cyan-600 dark:text-cyanAccent border border-cyanAccent/30">
+                  {(item as any).badge}
+                </span>
+              )}
 
               {isActive && (
                 <span

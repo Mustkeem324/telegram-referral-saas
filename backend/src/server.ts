@@ -23,6 +23,8 @@ import { antifraudRouter } from './modules/antifraud/antifraud.routes';
 import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { webhookRouter } from './modules/telegram/webhook.routes';
+import { aiRouter } from './modules/ai/ai.routes';
+import { gamificationRouter } from './modules/gamification/gamification.routes';
 import { TelegramService } from './modules/telegram/telegram.service';
 import { CustomBotManager } from './modules/telegram/custom-bot.manager';
 
@@ -90,6 +92,8 @@ app.use('/api/antifraud', antifraudRouter);
 app.use('/api/analytics', analyticsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/webhook', webhookRouter);
+app.use('/api/ai', aiRouter);
+app.use('/api/gamification', gamificationRouter);
 
 // Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

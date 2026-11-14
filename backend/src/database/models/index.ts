@@ -24,3 +24,4 @@ export * from './AuditLog';
 export * from './Notification';
 export * from './WebhookEvent';
 export * from './SupportTicket';
+export * from './MysteryBox';

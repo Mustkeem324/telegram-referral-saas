@@ -22,8 +22,13 @@ import {
   ExternalLink,
   BookOpen,
   Bot,
+  Smartphone,
+  Gift,
+  Flame,
+  Zap,
 } from 'lucide-react';
 import Link from 'next/link';
+import AICopilotDrawer from '../../components/AICopilotDrawer';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -157,32 +162,50 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Quick Tutorial & System Guide Banner */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-navy-800 via-navy-800 to-electric/10 border border-electric/25 p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-electric/15 text-electric border border-electric/30 flex items-center justify-center shrink-0">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white">How TeleGrowth Works</span>
-                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-cyanAccent/10 text-cyanAccent border border-cyanAccent/20">
-                  Interactive Guide
-                </span>
+        {/* Futuristic AI Neural Telemetry & Bento Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-navy-850 via-slate-900 to-indigo-950/60 border border-electric/30 p-5 shadow-2xl">
+          <div className="absolute top-0 right-0 w-96 h-96 bg-electric/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-electric via-cyanAccent to-purple-600 p-0.5 shadow-lg shadow-electric/25 shrink-0">
+                <div className="w-full h-full rounded-[14px] bg-slate-950 flex items-center justify-center text-cyan-300">
+                  <Sparkles className="w-6 h-6 animate-pulse" />
+                </div>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                New to the platform? Learn how bot invite attribution, anti-fraud hold periods, and automated rewards operate.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-extrabold text-white tracking-tight flex items-center gap-2">
+                    ✦ AI Growth Neural Engine Active
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-[10px] uppercase font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    99.8% Clean Traffic
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-1 max-w-xl">
+                  Real-time cryptographic invite tracking, autonomous bot fraud prevention, and Telegram Premium retention boost.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Link
-              href="/how-it-works"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-electric/15 hover:bg-electric text-electric hover:text-white border border-electric/30 text-xs font-bold transition shadow-sm"
-            >
-              <span>Explore Tutorial</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+
+            <div className="flex items-center gap-2.5 shrink-0">
+              <Link
+                href="/miniapp"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-bold transition shadow-sm hover:scale-105 active:scale-95"
+              >
+                <Smartphone className="w-4 h-4 text-purple-400" />
+                <span>Launch Mini-App</span>
+                <ArrowUpRight className="w-3.5 h-3.5 opacity-70" />
+              </Link>
+
+              <Link
+                href="/how-it-works"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-electric/15 hover:bg-electric text-electric hover:text-white border border-electric/30 text-xs font-bold transition shadow-sm"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Interactive Tutorial</span>
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -535,6 +558,9 @@ export default function DashboardPage() {
             </p>
           </Link>
         </div>
+
+        {/* Floating AI Growth Copilot Drawer */}
+        <AICopilotDrawer />
       </div>
     </DashboardLayout>
   );
