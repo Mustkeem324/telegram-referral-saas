@@ -13,6 +13,9 @@ import {
   History,
   CheckCircle2,
   Lock,
+  Sparkles,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 
 export default function RewardsPage() {
@@ -90,22 +93,27 @@ export default function RewardsPage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-8 max-w-6xl pb-12">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Milestone Rewards & Immutable Ledger</h1>
-            <p className="text-sm text-slate-400 mt-1">
-              Ledger-based reward distribution accounting. Historical transactions cannot be silently modified.
+            <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
+              <span>Milestone Rewards & Ledger</span>
+              <span className="text-xs font-bold text-warningOrange bg-warningOrange/10 px-2.5 py-0.5 rounded-full border border-warningOrange/25">
+                Ledger Backed
+              </span>
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              Cryptographically verified reward distribution with immutable transaction audit logs.
             </p>
           </div>
 
           {campaigns.length > 0 && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400 font-medium">Filter by Campaign:</span>
+              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider text-[11px]">Campaign:</span>
               <select
                 value={selectedCampaignId}
                 onChange={(e) => handleCampaignChange(e.target.value)}
-                className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none"
+                className="bg-navy-800 border border-navy-700 rounded-xl px-3.5 py-2 text-xs font-semibold text-white focus:outline-none focus:border-electric"
               >
                 {campaigns.map((c) => (
                   <option key={c._id} value={c._id}>
@@ -119,33 +127,37 @@ export default function RewardsPage() {
 
         {/* Milestone Rewards Cards */}
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <Award className="w-4 h-4 text-amber-400" /> Configured Milestone Rewards
+          <h2 className="text-sm font-bold text-white flex items-center gap-2">
+            <Award className="w-4 h-4 text-warningOrange" /> Configured Milestone Rewards
           </h2>
 
           {rewards.length === 0 ? (
-            <div className="p-8 rounded-xl bg-slate-900 border border-slate-800 text-center text-xs text-slate-500">
-              No rewards configured for this campaign. You can add rewards when editing or creating a campaign.
+            <div className="p-8 rounded-2xl bg-navy-800/80 border border-navy-700/80 text-center text-xs text-slate-400 space-y-2">
+              <Award className="w-8 h-8 text-slate-600 mx-auto" />
+              <p className="font-semibold text-slate-300">No rewards configured for this campaign yet.</p>
+              <p className="text-[11px] text-slate-500">You can define milestone bonuses during campaign creation or editing.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {rewards.map((r) => (
-                <div key={r._id} className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between">
+                <div key={r._id} className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-5 shadow-card flex flex-col justify-between hover:border-navy-650 transition-all">
                   <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    <div className="flex items-center justify-between mb-2.5">
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-warningOrange/15 text-warningOrange border border-warningOrange/30">
                         {r.milestone_referrals_required} Referrals Req.
                       </span>
-                      <span className="text-xs uppercase text-slate-500 font-semibold">{r.type}</span>
+                      <span className="text-[10px] uppercase text-cyanAccent font-bold bg-cyanAccent/10 px-2 py-0.5 rounded border border-cyanAccent/20">
+                        {r.type}
+                      </span>
                     </div>
 
-                    <h3 className="text-sm font-semibold text-white">{r.name}</h3>
-                    <p className="text-xs text-slate-400 mt-1 line-clamp-2">{r.description || 'Automatic milestone unlock.'}</p>
+                    <h3 className="text-sm font-bold text-white">{r.name}</h3>
+                    <p className="text-xs text-slate-400 mt-1 line-clamp-2 leading-relaxed">{r.description || 'Automatic milestone reward unlock.'}</p>
 
-                    <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                      <span className="text-slate-400">Inventory Status:</span>
-                      <span className="font-semibold text-white">
-                        {r.requires_inventory ? `${r.total_inventory - r.claimed_count} remaining` : 'Digital Automatic'}
+                    <div className="mt-4 pt-3.5 border-t border-navy-700/80 flex items-center justify-between text-xs">
+                      <span className="text-slate-400 font-medium">Inventory:</span>
+                      <span className="font-bold text-white font-mono">
+                        {r.requires_inventory ? `${r.total_inventory - r.claimed_count} remaining` : 'Automatic Digital'}
                       </span>
                     </div>
                   </div>
@@ -156,9 +168,10 @@ export default function RewardsPage() {
                         setSelectedReward(r);
                         setShowInventoryModal(true);
                       }}
-                      className="mt-4 w-full py-2 rounded-lg bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-sky-400 flex items-center justify-center gap-1.5"
+                      className="mt-4 w-full py-2.5 rounded-xl bg-navy-750 hover:bg-navy-700 border border-navy-650 text-xs font-bold text-electric flex items-center justify-center gap-1.5 transition-colors"
                     >
-                      <Upload className="w-3.5 h-3.5" /> Upload Codes / Keys
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload Codes / Keys</span>
                     </button>
                   )}
                 </div>
@@ -168,11 +181,11 @@ export default function RewardsPage() {
         </div>
 
         {/* Append-only Ledger Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+        <div className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-6 space-y-4 shadow-card">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                <History className="w-4 h-4 text-sky-400" /> Reward Transactions Ledger
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <History className="w-4 h-4 text-electric" /> Reward Transactions Ledger
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
                 Every credit and reversal is stamped with an immutable SHA-256 integrity hash.
@@ -182,44 +195,44 @@ export default function RewardsPage() {
 
           {ledger.length === 0 ? (
             <div className="py-12 text-center text-xs text-slate-500">
-              No reward transactions recorded yet.
+              No reward transactions recorded yet for this campaign.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-800/60 text-slate-400 uppercase text-[10px]">
+                <thead className="bg-navy-900/60 text-slate-400 uppercase text-[10px] tracking-wider">
                   <tr>
-                    <th className="py-2.5 px-3 rounded-l">Transaction Hash</th>
+                    <th className="py-2.5 px-3 rounded-l-xl">Transaction Hash</th>
                     <th className="py-2.5 px-3">Beneficiary</th>
                     <th className="py-2.5 px-3">Type</th>
                     <th className="py-2.5 px-3">Amount</th>
                     <th className="py-2.5 px-3">Reason</th>
-                    <th className="py-2.5 px-3 rounded-r">Date</th>
+                    <th className="py-2.5 px-3 rounded-r-xl">Timestamp</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-navy-700/60">
                   {ledger.map((tx) => (
-                    <tr key={tx._id} className="hover:bg-slate-800/30">
+                    <tr key={tx._id} className="hover:bg-navy-750/40 transition-colors">
                       <td className="py-3 px-3 font-mono text-slate-400 text-[11px]">
                         {tx.transaction_hash.slice(0, 16)}...
                       </td>
-                      <td className="py-3 px-3 font-mono text-sky-400">{tx.user_telegram_id}</td>
+                      <td className="py-3 px-3 font-mono text-electric font-semibold">{tx.user_telegram_id}</td>
                       <td className="py-3 px-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                             tx.type === 'credit'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                              ? 'bg-successGreen/15 text-successGreen border border-successGreen/30'
+                              : 'bg-dangerRed/15 text-dangerRed border border-dangerRed/30'
                           }`}
                         >
                           {tx.type}
                         </span>
                       </td>
-                      <td className="py-3 px-3 font-bold text-white">
+                      <td className="py-3 px-3 font-bold text-white font-mono">
                         {tx.type === 'credit' ? '+' : '-'}{tx.amount} {tx.unit}
                       </td>
                       <td className="py-3 px-3 text-slate-300 max-w-xs truncate">{tx.reason}</td>
-                      <td className="py-3 px-3 text-slate-500">
+                      <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
                         {new Date(tx.created_at).toLocaleDateString()}
                       </td>
                     </tr>
@@ -232,17 +245,17 @@ export default function RewardsPage() {
 
         {/* Modal: Upload Inventory */}
         {showInventoryModal && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+          <div className="fixed inset-0 z-50 bg-navy-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-navy-800 border border-navy-700 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
               <h3 className="text-base font-bold text-white">
                 Upload Keys / Codes for "{selectedReward?.name}"
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 leading-relaxed">
                 Paste unique promo codes, software licenses, or secret links (one per line). Each will be dispensed once to verified achievers.
               </p>
 
               {uploadSuccess && (
-                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium flex items-center gap-2">
+                <div className="p-3.5 rounded-xl bg-successGreen/10 border border-successGreen/30 text-successGreen text-xs font-semibold flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4" /> {uploadSuccess}
                 </div>
               )}
@@ -254,20 +267,20 @@ export default function RewardsPage() {
                   placeholder={"KEY-XXXX-1111\nKEY-YYYY-2222\nKEY-ZZZZ-3333"}
                   value={inventoryInput}
                   onChange={(e) => setInventoryInput(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs font-mono text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full bg-navy-900 border border-navy-700 rounded-xl p-3.5 text-xs font-mono text-white focus:outline-none focus:border-electric"
                 />
 
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-end gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setShowInventoryModal(false)}
-                    className="px-4 py-2 rounded-lg border border-slate-700 text-xs font-semibold text-slate-400 hover:text-white"
+                    className="px-4 py-2 rounded-xl border border-navy-700 text-xs font-bold text-slate-400 hover:text-white transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-semibold text-white shadow-lg shadow-sky-500/20"
+                    className="px-5 py-2 rounded-xl bg-electric hover:bg-electric-hover text-xs font-bold text-white shadow-lg shadow-electric/25 transition-all"
                   >
                     Upload Inventory
                   </button>

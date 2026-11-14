@@ -14,6 +14,8 @@ import {
   Award,
   Shield,
   HelpCircle,
+  Sparkles,
+  CheckCircle2,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -120,11 +122,11 @@ export default function NewCampaignPage() {
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6 pb-12">
         <div className="flex items-center gap-3">
           <Link
             href="/campaigns"
-            className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors"
+            className="p-2.5 rounded-xl bg-navy-800 border border-navy-700 text-slate-400 hover:text-white hover:border-navy-650 transition-colors shadow-sm"
           >
             <ArrowLeft className="w-4 h-4" />
           </Link>
@@ -135,48 +137,54 @@ export default function NewCampaignPage() {
         </div>
 
         {error && (
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs font-medium text-rose-400">
+          <div className="p-4 rounded-xl bg-dangerRed/10 border border-dangerRed/30 text-xs font-semibold text-dangerRed">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* 1. Basic Details */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Megaphone className="w-4 h-4 text-sky-400" /> 1. Campaign Details
+          <div className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-6 space-y-5 shadow-card">
+            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <Megaphone className="w-4 h-4 text-electric" /> 1. Campaign Details
             </h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
-                <label className="text-xs font-medium text-slate-300 block mb-1">Campaign Title *</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5 uppercase tracking-wider text-[11px]">
+                  Campaign Title *
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Mega Summer Community Airdrop & Referral Drive"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-colors"
                 />
               </div>
 
               <div className="md:col-span-2">
-                <label className="text-xs font-medium text-slate-300 block mb-1">Description</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5 uppercase tracking-wider text-[11px]">
+                  Description
+                </label>
                 <textarea
                   rows={2}
                   placeholder="Describe requirements and rewards for participants..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3.5 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-colors"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-300 block mb-1">Campaign Type</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5 uppercase tracking-wider text-[11px]">
+                  Campaign Type
+                </label>
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as any)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-colors"
                 >
                   <option value="referral">Referral Drive (Points & Milestones)</option>
                   <option value="giveaway">Provably Fair Giveaway (Raffle Pool)</option>
@@ -185,37 +193,42 @@ export default function NewCampaignPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-slate-300 block mb-1">Points per Verified Referral</label>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5 uppercase tracking-wider text-[11px]">
+                  Points per Verified Referral
+                </label>
                 <input
                   type="number"
                   min="0"
                   value={pointsPerRef}
                   onChange={(e) => setPointsPerRef(Number(e.target.value))}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-sky-500"
+                  className="w-full bg-navy-900 border border-navy-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-electric focus:ring-1 focus:ring-electric transition-colors"
                 />
               </div>
             </div>
           </div>
 
           {/* 2. Multi-Channel Requirements */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-6 space-y-4 shadow-card">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-emerald-400" /> 2. Multi-Channel Join Requirements
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-cyanAccent" /> 2. Multi-Channel Join Requirements
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Referred members must join all selected channels to unlock rewards.
                 </p>
               </div>
-              <Link href="/channels" className="text-xs text-sky-400 hover:text-sky-300 font-medium">
+              <Link href="/channels" className="text-xs text-electric hover:text-electric-light font-bold">
                 + Connect More Chats
               </Link>
             </div>
 
             {chats.length === 0 ? (
-              <div className="p-4 rounded-lg bg-slate-800/40 border border-slate-800 text-xs text-slate-400 text-center">
-                No verified channels connected yet. Go to <Link href="/channels" className="text-sky-400 underline">Connected Chats</Link> to add your channel.
+              <div className="p-5 rounded-xl bg-navy-900/60 border border-navy-700/80 text-xs text-slate-400 text-center space-y-1">
+                <p>No verified channels connected yet.</p>
+                <Link href="/channels" className="text-electric hover:underline font-semibold block">
+                  Go to Connected Chats to add your Telegram Channel or Group →
+                </Link>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -225,21 +238,21 @@ export default function NewCampaignPage() {
                     <div
                       key={chat._id}
                       onClick={() => toggleChatSelection(chat.chat_id)}
-                      className={`cursor-pointer p-3 rounded-lg border flex items-center justify-between transition-all ${
+                      className={`cursor-pointer p-3.5 rounded-xl border flex items-center justify-between transition-all ${
                         isChecked
-                          ? 'bg-sky-500/10 border-sky-500/40 text-white'
-                          : 'bg-slate-800/40 border-slate-700/60 text-slate-400 hover:border-slate-600'
+                          ? 'bg-electric/10 border-electric/40 text-white shadow-sm'
+                          : 'bg-navy-900/60 border-navy-700/60 text-slate-400 hover:border-navy-600'
                       }`}
                     >
                       <div>
-                        <span className="text-xs font-semibold block">{chat.title}</span>
-                        <span className="text-[10px] text-slate-500 uppercase">{chat.type} • ID: {chat.chat_id}</span>
+                        <span className="text-xs font-bold block text-white">{chat.title}</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-mono">{chat.type} • ID: {chat.chat_id}</span>
                       </div>
                       <input
                         type="checkbox"
                         checked={isChecked}
                         onChange={() => {}}
-                        className="rounded border-slate-700 text-sky-500 focus:ring-0"
+                        className="rounded border-navy-650 text-electric focus:ring-0"
                       />
                     </div>
                   );
@@ -249,11 +262,11 @@ export default function NewCampaignPage() {
           </div>
 
           {/* 3. Milestone Rewards */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-6 space-y-4 shadow-card">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Award className="w-4 h-4 text-amber-400" /> 3. Milestone Bonus Rewards
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Award className="w-4 h-4 text-warningOrange" /> 3. Milestone Bonus Rewards
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Automatic prizes distributed via immutable ledger when referrers hit milestone goals.
@@ -262,7 +275,7 @@ export default function NewCampaignPage() {
               <button
                 type="button"
                 onClick={addReward}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-sky-400"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-navy-750 hover:bg-navy-700 border border-navy-650 text-xs font-bold text-electric transition-colors"
               >
                 <Plus className="w-3.5 h-3.5" /> Add Milestone
               </button>
@@ -270,9 +283,9 @@ export default function NewCampaignPage() {
 
             <div className="space-y-3">
               {rewards.map((r, index) => (
-                <div key={index} className="p-3.5 rounded-lg bg-slate-800/60 border border-slate-700/60 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                <div key={index} className="p-4 rounded-xl bg-navy-900/70 border border-navy-700/70 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
                   <div className="sm:col-span-4">
-                    <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Reward Name</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Reward Name</label>
                     <input
                       type="text"
                       value={r.name}
@@ -281,12 +294,12 @@ export default function NewCampaignPage() {
                         copy[index].name = e.target.value;
                         setRewards(copy);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-white"
+                      className="w-full bg-navy-800 border border-navy-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-electric"
                     />
                   </div>
 
                   <div className="sm:col-span-3">
-                    <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Type</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Type</label>
                     <select
                       value={r.type}
                       onChange={(e) => {
@@ -294,7 +307,7 @@ export default function NewCampaignPage() {
                         copy[index].type = e.target.value;
                         setRewards(copy);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-navy-800 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-electric"
                     >
                       <option value="points">Points Bonus</option>
                       <option value="software_key">Software / License Key</option>
@@ -305,7 +318,7 @@ export default function NewCampaignPage() {
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Refs Req.</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Refs Req.</label>
                     <input
                       type="number"
                       min="1"
@@ -315,12 +328,12 @@ export default function NewCampaignPage() {
                         copy[index].milestone_referrals_required = Number(e.target.value);
                         setRewards(copy);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-navy-800 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-electric"
                     />
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="text-[10px] font-semibold uppercase text-slate-400 block mb-1">Bonus Pts</label>
+                    <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Bonus Pts</label>
                     <input
                       type="number"
                       min="0"
@@ -330,7 +343,7 @@ export default function NewCampaignPage() {
                         copy[index].points_value = Number(e.target.value);
                         setRewards(copy);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white"
+                      className="w-full bg-navy-800 border border-navy-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-electric"
                     />
                   </div>
 
@@ -338,7 +351,7 @@ export default function NewCampaignPage() {
                     <button
                       type="button"
                       onClick={() => removeReward(index)}
-                      className="p-1.5 text-slate-400 hover:text-rose-400"
+                      className="p-1.5 text-slate-400 hover:text-dangerRed transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -348,17 +361,17 @@ export default function NewCampaignPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex justify-end gap-3 pt-2">
             <Link
               href="/campaigns"
-              className="px-5 py-2.5 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+              className="px-5 py-2.5 rounded-xl border border-navy-700 text-xs font-bold text-slate-300 hover:bg-navy-800 transition-colors"
             >
               Cancel
             </Link>
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-2.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-xs font-semibold text-white shadow-lg shadow-sky-500/20 disabled:opacity-50 transition-all"
+              className="px-6 py-2.5 rounded-xl bg-electric hover:bg-electric-hover text-xs font-bold text-white shadow-lg shadow-electric/25 disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               {loading ? 'Creating Campaign...' : 'Publish Campaign'}
             </button>
