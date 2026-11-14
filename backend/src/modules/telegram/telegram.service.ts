@@ -19,6 +19,18 @@ export class TelegramService {
   private static bot: Telegraf | null = null;
 
   /**
+   * Safe button generator: returns web_app if HTTPS, or callback_data if HTTP/localhost
+   */
+  private static makeWebButton(text: string, path: string, fallbackCallback: string): any {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    const url = `${config.frontendUrl}${cleanPath}`;
+    if (url.startsWith('https://') && !url.includes('localhost') && !url.includes('127.0.0.1')) {
+      return { text, web_app: { url } };
+    }
+    return { text, callback_data: fallbackCallback };
+  }
+
+  /**
    * Initialize central Telegram SaaS Bot
    */
   static getBot(): Telegraf {
@@ -114,8 +126,9 @@ export class TelegramService {
 
         const dashboardUrl = `${config.frontendUrl}/dashboard`;
         const welcomeText =
-          `👋 Welcome to **Telegram Referral & Giveaway SaaS**, ${from.first_name}!\n\n` +
+          `👋 Welcome to **TeleGrowth SaaS**, ${from.first_name}!\n\n` +
           `🚀 Supercharge your channels & groups with viral growth campaigns, referral milestones, automated rewards, and provably-fair giveaways.\n\n` +
+          `🖥 **Web Dashboard:** ${dashboardUrl}\n\n` +
           `**Available Commands:**\n` +
           `• /dashboard — Access your management dashboard\n` +
           `• /campaigns — List and view your active campaigns\n` +
@@ -126,15 +139,15 @@ export class TelegramService {
           `• /support — Create a support inquiry\n` +
           `• /paysupport — Inquire regarding billing and Telegram Stars`;
 
+        const dashBtn = this.makeWebButton('📊 Open Web Dashboard', '/dashboard', 'cmd_open_dashboard');
+
         await ctx.replyWithMarkdown(welcomeText, {
           reply_markup: {
             inline_keyboard: [
-              [
-                { text: '📊 Open Web Dashboard', web_app: { url: dashboardUrl } },
-              ],
+              [dashBtn],
               [
                 { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
-                { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_plan' },
+                { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
               ],
             ],
           },
@@ -148,11 +161,12 @@ export class TelegramService {
     // /dashboard
     bot.command('dashboard', async (ctx) => {
       const url = `${config.frontendUrl}/dashboard`;
+      const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
       await ctx.replyWithMarkdown(
-        `🖥 **Creator Dashboard**\n\nClick the button below to launch your Web Dashboard directly inside Telegram:`,
+        `🖥 **Creator Dashboard**\n\nLink: ${url}\n\nClick below to launch:`,
         {
           reply_markup: {
-            inline_keyboard: [[{ text: '🚀 Open Dashboard', web_app: { url } }]],
+            inline_keyboard: [[dashBtn]],
           },
         }
       );
@@ -170,7 +184,7 @@ export class TelegramService {
       const campaigns = await Campaign.find({ workspace_id: member.workspace_id }).limit(10);
       if (campaigns.length === 0) {
         return ctx.replyWithMarkdown(
-          `You have no campaigns yet.\nUse /create or open the dashboard to launch your first viral campaign!`
+          `You have no campaigns yet.\nUse /create or open the dashboard (${config.frontendUrl}/campaigns/new) to launch your first viral campaign!`
         );
       }
 
@@ -182,11 +196,12 @@ export class TelegramService {
                 `   • Total Referrals: ${c.total_referrals} (${c.verified_referrals} verified)\n\n`;
       });
 
+      const analyticsBtn = this.makeWebButton('📊 Full Analytics', '/analytics', 'cmd_view_analytics');
       await ctx.replyWithMarkdown(text, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '➕ New Campaign', callback_data: 'cmd_create_campaign' }],
-            [{ text: '📊 Full Analytics', web_app: { url: `${config.frontendUrl}/analytics` } }],
+            [analyticsBtn],
           ],
         },
       });
@@ -195,11 +210,12 @@ export class TelegramService {
     // /create
     bot.command('create', async (ctx) => {
       const url = `${config.frontendUrl}/campaigns/new`;
+      const createBtn = this.makeWebButton('✨ Launch Creator Studio', '/campaigns/new', 'cmd_create_campaign');
       await ctx.replyWithMarkdown(
-        `🛠 **Launch a New Campaign**\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, use the Web Creator Studio:`,
+        `🛠 **Launch a New Campaign**\n\nLink: ${url}\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, open Creator Studio:`,
         {
           reply_markup: {
-            inline_keyboard: [[{ text: '✨ Launch Creator Studio', web_app: { url } }]],
+            inline_keyboard: [[createBtn]],
           },
         }
       );
@@ -222,13 +238,15 @@ export class TelegramService {
         `• Connected Chats Limit: **${plan?.max_connected_chats || 1}**\n` +
         `• Monthly Verified Referrals: **${plan?.max_verified_referrals_monthly?.toLocaleString() || 100}**\n` +
         `• Anti-Fraud Tier: **${plan?.features?.anti_fraud_tier || 'basic'}**\n\n` +
+        `Portal: ${config.frontendUrl}/billing\n\n` +
         `Upgrade anytime using Telegram Stars ⭐ or Card!`;
 
+      const billingBtn = this.makeWebButton('🌐 View Billing Portal', '/billing', 'cmd_view_billing');
       await ctx.replyWithMarkdown(text, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⭐ Upgrade with Stars', callback_data: 'cmd_upgrade_stars' }],
-            [{ text: '🌐 View Billing Portal', web_app: { url: `${config.frontendUrl}/billing` } }],
+            [billingBtn],
           ],
         },
       });
@@ -237,11 +255,12 @@ export class TelegramService {
     // /analytics
     bot.command('analytics', async (ctx) => {
       const url = `${config.frontendUrl}/analytics`;
+      const analyticsBtn = this.makeWebButton('📊 View Analytics', '/analytics', 'cmd_view_analytics');
       await ctx.replyWithMarkdown(
-        `📈 **Live Campaign Analytics**\n\nView real-time join charts, conversion rates, and top referrers:`,
+        `📈 **Live Campaign Analytics**\n\nLink: ${url}\n\nView real-time join charts, conversion rates, and top referrers:`,
         {
           reply_markup: {
-            inline_keyboard: [[{ text: '📊 View Analytics', web_app: { url } }]],
+            inline_keyboard: [[analyticsBtn]],
           },
         }
       );
@@ -255,7 +274,7 @@ export class TelegramService {
         `2. Go to **Administrators** > **Add Admin**.\n` +
         `3. Search for @${config.telegram.botUsername} and add it.\n` +
         `4. Ensure the **"Invite Users via Link"** permission is **ENABLED**.\n` +
-        `5. Open your Dashboard, navigate to **Connected Chats**, and click **Verify Connection**.\n\n` +
+        `5. Open your Dashboard (${config.frontendUrl}/channels), navigate to **Connected Chats**, and click **Verify Connection**.\n\n` +
         `💡 *Why is invite permission required?*\n` +
         `The platform generates unique invite links for every participant so that each member's referrals are tracked 100% accurately without spoofing.`;
 
@@ -289,15 +308,31 @@ export class TelegramService {
     });
 
     // Callback queries
+    bot.action('cmd_open_dashboard', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.replyWithMarkdown(
+        `🖥 **Creator Dashboard**\n\nAccess your dashboard here:\n${config.frontendUrl}/dashboard`
+      );
+    });
+
+    bot.action('cmd_view_analytics', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.replyWithMarkdown(
+        `📈 **Live Campaign Analytics:**\n${config.frontendUrl}/analytics`
+      );
+    });
+
+    bot.action('cmd_view_billing', async (ctx) => {
+      await ctx.answerCbQuery();
+      await ctx.replyWithMarkdown(
+        `💳 **Billing & Subscriptions Portal:**\n${config.frontendUrl}/billing`
+      );
+    });
+
     bot.action('cmd_create_campaign', async (ctx) => {
       await ctx.answerCbQuery();
       await ctx.replyWithMarkdown(
-        `Click below to launch the Campaign Studio:`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: '➕ Launch Studio', web_app: { url: `${config.frontendUrl}/campaigns/new` } }]],
-          },
-        }
+        `🛠 **Launch Campaign Studio**\n\nConfigure viral rules and milestone rewards here:\n${config.frontendUrl}/campaigns/new`
       );
     });
 
@@ -308,12 +343,7 @@ export class TelegramService {
         `Choose your tier to purchase directly inside Telegram:\n` +
         `• **Pro Plan**: 1,500 Stars / month (10 campaigns, 5k referrals)\n` +
         `• **Business Plan**: 5,000 Stars / month (50 campaigns, 50k referrals)\n\n` +
-        `Open the billing dashboard to checkout instantly:`,
-        {
-          reply_markup: {
-            inline_keyboard: [[{ text: '⭐ Checkout with Stars', web_app: { url: `${config.frontendUrl}/billing` } }]],
-          },
-        }
+        `Checkout Portal: ${config.frontendUrl}/billing`
       );
     });
 
@@ -427,7 +457,14 @@ export class TelegramService {
     }
 
     try {
-      if (config.telegram.webhookUrl) {
+      const isPublicHttpsWebhook =
+        config.telegram.webhookUrl &&
+        config.telegram.webhookUrl.startsWith('https://') &&
+        !config.telegram.webhookUrl.includes('{') &&
+        !config.telegram.webhookUrl.includes('localhost') &&
+        !config.telegram.webhookUrl.includes('your-domain.com');
+
+      if (isPublicHttpsWebhook) {
         await bot.telegram.setWebhook(config.telegram.webhookUrl, {
           allowed_updates: ['message', 'callback_query', 'chat_member', 'my_chat_member', 'pre_checkout_query'],
           secret_token: config.telegram.webhookSecret || undefined,
