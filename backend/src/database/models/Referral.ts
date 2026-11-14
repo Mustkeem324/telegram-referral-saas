@@ -21,6 +21,8 @@ export interface IReferral extends Document {
   risk_score: number;
   fraud_reasons: string[];
   points_awarded: number;
+  is_premium: boolean;
+  is_premium_multiplier_applied: boolean;
   joined_at?: Date;
   verified_at?: Date;
   rewarded_at?: Date;
@@ -50,6 +52,8 @@ const ReferralSchema = new Schema<IReferral>(
     risk_score: { type: Number, default: 0, index: true },
     fraud_reasons: [{ type: String }],
     points_awarded: { type: Number, default: 0 },
+    is_premium: { type: Boolean, default: false, index: true },
+    is_premium_multiplier_applied: { type: Boolean, default: false },
     joined_at: { type: Date, default: Date.now },
     verified_at: { type: Date },
     rewarded_at: { type: Date },

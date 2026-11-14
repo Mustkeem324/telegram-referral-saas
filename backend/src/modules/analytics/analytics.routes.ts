@@ -7,6 +7,7 @@ import {
   RewardTransaction,
   FraudEvent,
   GiveawayWinner,
+  User,
 } from '../../database/models';
 import mongoose from 'mongoose';
 
@@ -93,6 +94,28 @@ router.get('/overview', requireAuth, requireWorkspace('viewer'), async (req, res
       { $limit: 10 },
     ]);
 
+    // Enrich top referrers with user names and premium status
+    const tgIds = topReferrers.map((r) => r._id);
+    const users = await User.find({ telegram_id: { $in: tgIds } });
+    const userMap = new Map<string, any>();
+    users.forEach((u: any) => {
+      userMap.set(u.telegram_id, {
+        first_name: u.first_name,
+        username: u.username,
+        is_premium: Boolean(u.is_premium),
+      });
+    });
+
+    const enrichedTopReferrers = topReferrers.map((r) => {
+      const u = userMap.get(r._id);
+      return {
+        ...r,
+        first_name: u?.first_name || 'Member',
+        username: u?.username || r._id,
+        is_premium: u?.is_premium || false,
+      };
+    });
+
     // 4. Rewards Distributed Summary
     const rewardTxStats = await RewardTransaction.aggregate([
       { $match: matchFilter },
@@ -105,8 +128,9 @@ router.get('/overview', requireAuth, requireWorkspace('viewer'), async (req, res
       },
     ]);
 
-    // 5. Fraud Incidents
+    // 5. Fraud Incidents & Premium Referrals count
     const fraudCount = await FraudEvent.countDocuments({ workspace_id: workspaceId });
+    const premiumCount = await Referral.countDocuments({ ...matchFilter, is_premium: true });
 
     res.json({
       metrics: {
@@ -118,6 +142,7 @@ router.get('/overview', requireAuth, requireWorkspace('viewer'), async (req, res
         conversionRate: `${conversionRate}%`,
         rewardedCount: rewarded,
         fraudIncidents: fraudCount,
+        premiumReferrals: premiumCount,
       },
       charts: {
         dailyJoins: dailyJoins.map((d) => ({
@@ -125,7 +150,7 @@ router.get('/overview', requireAuth, requireWorkspace('viewer'), async (req, res
           total: d.totalJoins,
           verified: d.verifiedJoins,
         })),
-        topReferrers,
+        topReferrers: enrichedTopReferrers,
         rewardTxStats,
       },
     });

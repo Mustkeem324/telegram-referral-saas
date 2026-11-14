@@ -19,11 +19,12 @@ import {
   TrendingUp,
   AlertCircle,
   HelpCircle,
+  Star,
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function HowItWorksPage() {
-  const [activeTab, setActiveTab] = useState<'creators' | 'referrers' | 'antifraud'>('creators');
+  const [activeTab, setActiveTab] = useState<'creators' | 'referrers' | 'antifraud' | 'premium'>('creators');
 
   return (
     <DashboardLayout>
@@ -99,6 +100,17 @@ export default function HowItWorksPage() {
           >
             <ShieldCheck className="w-4 h-4" />
             <span>Anti-Fraud & Fair Play Engine</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('premium')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'premium'
+                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-purple-500/25'
+                : 'bg-navy-800 text-slate-400 hover:text-white border border-slate-800/80'
+            }`}
+          >
+            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <span>Telegram Premium Engine</span>
           </button>
         </div>
 
@@ -354,6 +366,68 @@ export default function HowItWorksPage() {
                   </span>
                   <p className="text-slate-400 text-xs leading-relaxed">
                     Every point minted and every reward distributed is signed with SHA-256 hash chains, guaranteeing provable delivery and zero double-claiming.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: Telegram Premium Engine */}
+        {activeTab === 'premium' && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-navy-800 border border-purple-500/30 rounded-2xl p-6 shadow-card space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/30 font-bold">
+                  High-Value Community Growth
+                </span>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2 mt-2">
+                  <Star className="w-5 h-5 text-amber-400 fill-amber-400" /> Telegram Premium Intelligence & Multipliers
+                </h3>
+                <p className="text-slate-400 text-xs mt-1 max-w-2xl leading-relaxed">
+                  Telegram Premium subscribers represent the highest-value audience in Telegram. TeleGrowth automatically detects Telegram Premium status, applies bonus multipliers, fast-tracks verification, and delivers Premium gift codes.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="bg-navy-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center font-bold text-xs">
+                    ⭐
+                  </div>
+                  <h4 className="text-sm font-bold text-white">1. Native is_premium Detection</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    When newcomers join via an invite link, the Telegram Bot API passes <code className="text-purple-300 font-mono">user.is_premium</code>. Our ingestion pipeline records their status in real time without intrusive prompts.
+                  </p>
+                </div>
+
+                <div className="bg-navy-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold text-xs">
+                    2x
+                  </div>
+                  <h4 className="text-sm font-bold text-white">2. Configurable Point Multipliers</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Incentivize your ambassadors to recruit high-value paying subscribers! Creators can configure a <b>1.5x, 2x, 3x, or 5x</b> point booster when an invited user is a Telegram Premium member.
+                  </p>
+                </div>
+
+                <div className="bg-navy-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+                  <div className="w-8 h-8 rounded-lg bg-successGreen/15 text-successGreen flex items-center justify-center font-bold text-xs">
+                    ⚡
+                  </div>
+                  <h4 className="text-sm font-bold text-white">3. Fast-Track Retention Verification</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Telegram Premium users have active payment methods attached to their Telegram ID. TeleGrowth automatically deducts <b>-30 risk score</b> and can bypass the retention hold for instant rewards.
+                  </p>
+                </div>
+
+                <div className="bg-navy-900/80 border border-slate-800 rounded-xl p-5 space-y-2">
+                  <div className="w-8 h-8 rounded-lg bg-electric/15 text-electric flex items-center justify-center font-bold text-xs">
+                    🎁
+                  </div>
+                  <h4 className="text-sm font-bold text-white">4. Telegram Premium Gift Code Rewards</h4>
+                  <p className="text-slate-400 text-xs leading-relaxed">
+                    Set up milestone prizes with official Telegram Premium gift links (<code className="text-cyanAccent font-mono">t.me/giftcode/...</code>). The bot automatically sends 1-click activation links to referrers upon hitting target milestones.
                   </p>
                 </div>
               </div>

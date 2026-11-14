@@ -179,7 +179,9 @@ export default function DashboardPage() {
                 <span className="text-3xl font-extrabold text-white tracking-tight">
                   {metrics.totalReferrals.toLocaleString()}
                 </span>
-                <p className="text-[11px] text-slate-400 mt-0.5">Tracked link clicks & joins</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  <span className="text-purple-400 font-semibold">{metrics.premiumReferrals || 0} Premium ⭐</span> • All joins
+                </p>
               </div>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-electric/10 text-electric border border-electric/20">
                 All time
@@ -411,8 +413,13 @@ export default function DashboardPage() {
                             #{idx + 1}
                           </span>
                           <div>
-                            <span className="text-xs font-bold text-white block">
-                              {r.username ? `@${r.username}` : `ID: ${r._id}`}
+                            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                              <span>{r.first_name || (r.username ? `@${r.username}` : `ID: ${r._id}`)}</span>
+                              {r.is_premium && (
+                                <span className="inline-flex items-center text-[9px] font-bold text-purple-400 bg-purple-500/15 border border-purple-500/30 px-1 py-0.2 rounded-full">
+                                  ⭐ Premium
+                                </span>
+                              )}
                             </span>
                             <span className="text-[10px] text-slate-400">
                               {r.totalReferred} total joined

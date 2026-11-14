@@ -7,6 +7,8 @@ export type RewardType =
   | 'coupon_code'
   | 'course_access'
   | 'giveaway_ticket'
+  | 'telegram_premium'
+  | 'telegram_stars'
   | 'custom'
   | 'manual';
 
@@ -42,6 +44,8 @@ const RewardSchema = new Schema<IReward>(
         'coupon_code',
         'course_access',
         'giveaway_ticket',
+        'telegram_premium',
+        'telegram_stars',
         'custom',
         'manual',
       ],

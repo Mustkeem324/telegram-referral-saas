@@ -17,6 +17,9 @@ export interface ICampaign extends Document {
     hold_period_hours: number;
     retention_period_days: number;
     allow_custom_rewards: boolean;
+    premium_multiplier: number;
+    premium_fast_track: boolean;
+    require_premium_only: boolean;
   };
   fraud_rules: {
     max_referrals_per_ip_per_hour: number;
@@ -53,6 +56,9 @@ const CampaignSchema = new Schema<ICampaign>(
       hold_period_hours: { type: Number, default: 0 },
       retention_period_days: { type: Number, default: 0 },
       allow_custom_rewards: { type: Boolean, default: true },
+      premium_multiplier: { type: Number, default: 2 },
+      premium_fast_track: { type: Boolean, default: true },
+      require_premium_only: { type: Boolean, default: false },
     },
     fraud_rules: {
       max_referrals_per_ip_per_hour: { type: Number, default: 5 },

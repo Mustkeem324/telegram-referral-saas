@@ -103,6 +103,7 @@ router.get('/leaderboard/:campaignId', async (req, res) => {
           user_telegram_id: row.user_telegram_id,
           username: user?.username || `User_${row.user_telegram_id.slice(-4)}`,
           first_name: user?.first_name || 'Anonymous',
+          is_premium: Boolean(user?.is_premium),
           joins_count: row.joins_count,
           verified_count: row.verified_count,
           clicks_count: row.clicks_count,

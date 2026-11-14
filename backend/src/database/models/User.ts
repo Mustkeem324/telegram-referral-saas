@@ -7,6 +7,7 @@ export interface IUser extends Document {
   last_name?: string;
   photo_url?: string;
   role: 'superadmin' | 'user';
+  is_premium: boolean;
   is_active: boolean;
   banned_at?: Date;
   ban_reason?: string;
@@ -22,6 +23,7 @@ const UserSchema = new Schema<IUser>(
     last_name: { type: String },
     photo_url: { type: String },
     role: { type: String, enum: ['superadmin', 'user'], default: 'user', index: true },
+    is_premium: { type: Boolean, default: false, index: true },
     is_active: { type: Boolean, default: true, index: true },
     banned_at: { type: Date },
     ban_reason: { type: String },

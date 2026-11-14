@@ -15,6 +15,7 @@ import {
   GiveawayEntry,
   ConnectedBot,
   Workspace,
+  User,
 } from '../../database/models';
 import { TelegramService } from '../telegram/telegram.service';
 import { logger } from '../../utils/logger';
@@ -123,10 +124,17 @@ export class ReferralService {
       const chatId = String(chat.id);
       const user = newMember.user;
       const userTelegramId = String(user.id);
+      const isPremiumUser = Boolean((user as any).is_premium);
       const newStatus = newMember.status;
       const oldStatus = oldMember?.status;
 
-      logger.info(`chat_member update: chat=${chatId}, user=${userTelegramId}, old=${oldStatus}, new=${newStatus}, invite=${inviteLinkObj?.invite_link}`);
+      logger.info(`chat_member update: chat=${chatId}, user=${userTelegramId}, is_premium=${isPremiumUser}, old=${oldStatus}, new=${newStatus}, invite=${inviteLinkObj?.invite_link}`);
+
+      // Sync user's Telegram Premium status
+      await User.findOneAndUpdate(
+        { telegram_id: userTelegramId },
+        { $set: { is_premium: isPremiumUser } }
+      );
 
       // Handle user left / kicked
       if (newStatus === 'left' || newStatus === 'kicked') {
@@ -219,12 +227,26 @@ export class ReferralService {
       let riskScore = 0;
       const fraudReasons: string[] = [];
 
+      // Check if campaign requires Telegram Premium users only
+      if (campaign.reward_policy?.require_premium_only && !isPremiumUser) {
+        riskScore = 100;
+        fraudReasons.push('telegram_premium_required');
+      }
+
       if (recentReferralsCount >= campaign.fraud_rules.max_referrals_per_ip_per_hour) {
         riskScore += 50;
         fraudReasons.push('rapid_burst_velocity');
       }
 
-      const initialStatus = riskScore >= campaign.fraud_rules.suspicious_threshold_score
+      // Telegram Premium accounts have active payment instruments attached; automatically reduce risk score
+      if (isPremiumUser && riskScore > 0 && !fraudReasons.includes('telegram_premium_required')) {
+        riskScore = Math.max(0, riskScore - 30);
+      }
+
+      const isSuspicious = riskScore >= campaign.fraud_rules.suspicious_threshold_score;
+      const initialStatus = fraudReasons.includes('telegram_premium_required')
+        ? 'rejected'
+        : isSuspicious
         ? 'verification_pending'
         : 'joined';
 
@@ -240,6 +262,8 @@ export class ReferralService {
         status: initialStatus,
         risk_score: riskScore,
         fraud_reasons: fraudReasons,
+        is_premium: isPremiumUser,
+        is_premium_multiplier_applied: false,
         joined_at: new Date(),
       });
 
@@ -352,10 +376,16 @@ export class ReferralService {
     // Award Points & Milestone Rewards via Ledger
     await this.distributeMilestoneRewards(campaign, referral);
 
-    // Notify referrer on Telegram
+    // Notify referrer on Telegram with Premium booster notice if applicable
+    const premiumBoostMsg = referral.is_premium && referral.is_premium_multiplier_applied
+      ? `⭐ **Telegram Premium Booster:** The member you invited has Telegram Premium! Points were boosted to **+${referral.points_awarded} pts**!\n\n`
+      : '';
+
     TelegramService.sendMessage(
       referral.referrer_telegram_id,
-      `🎉 **Referral Verified!**\n\nA new participant just completed all requirements for **${campaign.title}** through your link!\n\n` +
+      `🎉 **Referral Verified!**\n\n` +
+      premiumBoostMsg +
+      `A new participant just completed all requirements for **${campaign.title}** through your link!\n\n` +
       `You earned points towards your milestone rewards. Keep sharing!`
     ).catch(() => {});
 
@@ -368,9 +398,18 @@ export class ReferralService {
   private static async distributeMilestoneRewards(campaign: any, referral: any): Promise<void> {
     const referrerId = referral.referrer_telegram_id;
 
-    // 1. Award base points if configured
-    const pointsPerRef = campaign.reward_policy?.points_per_referral || 10;
-    if (pointsPerRef > 0) {
+    // 1. Award base points if configured, applying Telegram Premium multiplier
+    const basePoints = campaign.reward_policy?.points_per_referral || 10;
+    let multiplier = 1;
+
+    if (referral.is_premium && (campaign.reward_policy?.premium_multiplier || 1) > 1) {
+      multiplier = campaign.reward_policy.premium_multiplier;
+      referral.is_premium_multiplier_applied = true;
+    }
+
+    const finalPoints = Math.round(basePoints * multiplier);
+
+    if (finalPoints > 0) {
       const txHash = crypto
         .createHash('sha256')
         .update(`tx_${campaign._id}_${referrerId}_${referral._id}_${Date.now()}`)
@@ -382,13 +421,15 @@ export class ReferralService {
         user_telegram_id: referrerId,
         referral_id: referral._id,
         type: 'credit',
-        amount: pointsPerRef,
+        amount: finalPoints,
         unit: 'points',
         transaction_hash: txHash,
-        reason: `Verified referral reward for referred user ${referral.referred_telegram_id}`,
+        reason: referral.is_premium && multiplier > 1
+          ? `Verified referral with ${multiplier}x Telegram Premium bonus for user ${referral.referred_telegram_id}`
+          : `Verified referral reward for referred user ${referral.referred_telegram_id}`,
       });
 
-      referral.points_awarded = pointsPerRef;
+      referral.points_awarded = finalPoints;
       referral.status = 'rewarded';
       referral.rewarded_at = new Date();
       await referral.save();
@@ -454,13 +495,23 @@ export class ReferralService {
       });
 
       // Send prize to referrer
-      TelegramService.sendMessage(
-        referrerId,
-        `🏆 **MILESTONE UNLOCKED!**\n\nCongratulations! You reached **${totalVerified} verified referrals** in **${campaign.title}**!\n\n` +
-        `🎁 **Reward:** ${reward.name}\n` +
-        (deliveredPayload ? `🔑 **Access / Key:** \`${deliveredPayload}\`\n\n` : '') +
-        `Thank you for being a top ambassador!`
-      ).catch(() => {});
+      if (reward.type === 'telegram_premium') {
+        TelegramService.sendMessage(
+          referrerId,
+          `⭐ **TELEGRAM PREMIUM REWARD UNLOCKED!** ⭐\n\n` +
+          `Congratulations! You achieved milestone **${totalVerified} verified referrals** in **${campaign.title}**!\n\n` +
+          `🎁 **Prize:** ${reward.name}\n` +
+          (deliveredPayload ? `✨ **Telegram Premium Activation Link:**\n${deliveredPayload}\n\nTap the link above to activate your Telegram Premium subscription instantly!` : '')
+        ).catch(() => {});
+      } else {
+        TelegramService.sendMessage(
+          referrerId,
+          `🏆 **MILESTONE UNLOCKED!**\n\nCongratulations! You reached **${totalVerified} verified referrals** in **${campaign.title}**!\n\n` +
+          `🎁 **Reward:** ${reward.name}\n` +
+          (deliveredPayload ? `🔑 **Access / Key:** \`${deliveredPayload}\`\n\n` : '') +
+          `Thank you for being a top ambassador!`
+        ).catch(() => {});
+      }
     }
   }
 

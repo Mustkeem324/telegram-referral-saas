@@ -125,6 +125,7 @@ export class TelegramService {
 
         const telegramId = String(from.id);
         const startPayload = ctx.payload;
+        const isPremium = Boolean((from as any).is_premium);
 
         // Find or create user
         let user = await User.findOne({ telegram_id: telegramId });
@@ -135,8 +136,12 @@ export class TelegramService {
             last_name: from.last_name || '',
             username: from.username,
             role: telegramId === config.superAdmin.telegramId ? 'superadmin' : 'user',
+            is_premium: isPremium,
             is_active: true,
           });
+        } else if (user.is_premium !== isPremium) {
+          user.is_premium = isPremium;
+          await user.save();
         }
 
         // Ensure user has at least one active workspace
@@ -934,11 +939,20 @@ export class TelegramService {
       const shareText = encodeURIComponent(`Join our channel via my exclusive invite link: ${inviteLink}`);
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${shareText}`;
 
+      const basePoints = campaign.reward_policy?.points_per_referral || 10;
+      const premiumMult = campaign.reward_policy?.premium_multiplier || 2;
+      const premiumPoints = Math.round(basePoints * premiumMult);
+
+      const premiumBoosterNotice = premiumMult > 1
+        ? `⭐ <b>Telegram Premium Booster:</b> Earn <b>${premiumMult}x (+${premiumPoints} pts)</b> for inviting Telegram Premium members!\n`
+        : '';
+
       const text =
         `🔗 <b>Your Exclusive Telegram Invite Link:</b>\n\n` +
         `Campaign: <b>${this.escapeHtml(campaign.title)}</b>\n` +
-        `Reward: <b>+${campaign.reward_policy?.points_per_referral || 10} Points</b> per verified join\n\n` +
-        `<code>${inviteLink}</code>\n\n` +
+        `Standard Reward: <b>+${basePoints} Points</b> per verified join\n` +
+        premiumBoosterNotice +
+        `\n<code>${inviteLink}</code>\n\n` +
         `💡 <i>Every member who joins through this link is attributed to your account automatically. Tap below to copy or share directly to your Telegram contacts!</i>`;
 
       await this.safeReply(ctx, text, {
@@ -967,14 +981,16 @@ export class TelegramService {
       const tgId = String(ctx.from?.id);
       if (!tgId) return;
 
-      const [totalCount, verifiedCount, pendingCount, referrals] = await Promise.all([
+      const [totalCount, verifiedCount, pendingCount, referrals, userRecord] = await Promise.all([
         Referral.countDocuments({ referrer_telegram_id: tgId }),
         Referral.countDocuments({ referrer_telegram_id: tgId, status: { $in: ['verified', 'rewarded'] } }),
         Referral.countDocuments({ referrer_telegram_id: tgId, status: { $in: ['joined', 'verification_pending', 'pending'] } }),
         Referral.find({ referrer_telegram_id: tgId }),
+        User.findOne({ telegram_id: tgId }),
       ]);
 
       const pointsEarned = referrals.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
+      const premiumReferralsCount = referrals.filter((r) => r.is_premium).length;
 
       // Compute rank among all referrers
       const topAgg = await Referral.aggregate([
@@ -987,15 +1003,19 @@ export class TelegramService {
       const rankText = rankIndex >= 0 ? `#${rankIndex + 1}` : 'Unranked';
 
       const firstName = this.escapeHtml(ctx.from?.first_name || 'Member');
+      const isPremiumSelf = Boolean((ctx.from as any)?.is_premium || userRecord?.is_premium);
+
       const text =
         `📊 <b>Your Personal Referral Statistics:</b>\n\n` +
         `👤 User: <b>${firstName}</b> (<code>${tgId}</code>)\n` +
+        `⭐ Telegram Account: <b>${isPremiumSelf ? 'Premium Member ⭐' : 'Standard'}</b>\n` +
         `🏆 Community Rank: <b>${rankText}</b>\n\n` +
         `• <b>Total Referrals:</b> ${totalCount}\n` +
         `• <b>Verified Joins:</b> ${verifiedCount} ✅\n` +
+        `• <b>Premium Joins:</b> ${premiumReferralsCount} ⭐ (Multiplier applied)\n` +
         `• <b>Pending Hold:</b> ${pendingCount} ⏳\n` +
-        `• <b>Total Points:</b> ${pointsEarned} ⭐\n\n` +
-        `💡 <i>Share your link to earn more points and unlock milestone rewards!</i>`;
+        `• <b>Total Points:</b> ${pointsEarned} Points\n\n` +
+        `💡 <i>Share your link to invite members, earn bonus points for Premium members, and unlock milestone rewards!</i>`;
 
       await this.safeReply(ctx, text, {
         reply_markup: {
@@ -1050,19 +1070,24 @@ export class TelegramService {
         );
       }
 
-      // Fetch user names
+      // Fetch user names & premium status
       const tgIds = topReferrers.map((r) => r._id);
       const users = await User.find({ telegram_id: { $in: tgIds } });
-      const userMap = new Map<string, string>();
+      const userMap = new Map<string, { name: string; isPremium: boolean }>();
       users.forEach((u) => {
-        userMap.set(u.telegram_id, u.first_name || (u.username ? `@${u.username}` : `User ${u.telegram_id}`));
+        userMap.set(u.telegram_id, {
+          name: u.first_name || (u.username ? `@${u.username}` : `User ${u.telegram_id}`),
+          isPremium: Boolean(u.is_premium),
+        });
       });
 
       let text = `🏆 <b>Top Referrers Leaderboard:</b>\n\n`;
       topReferrers.forEach((entry, idx) => {
         const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-        const name = this.escapeHtml(userMap.get(entry._id) || `Member ${entry._id}`);
-        text += `${medal} <b>${name}</b>: <b>${entry.verified_count}</b> verified (${entry.points} pts)\n`;
+        const uInfo = userMap.get(entry._id);
+        const name = this.escapeHtml(uInfo?.name || `Member ${entry._id}`);
+        const premiumStar = uInfo?.isPremium ? ' ⭐' : '';
+        text += `${medal} <b>${name}${premiumStar}</b>: <b>${entry.verified_count}</b> verified (${entry.points} pts)\n`;
       });
 
       text += `\n💡 <i>Keep inviting to climb the ranks and win top milestone rewards!</i>`;

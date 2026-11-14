@@ -146,8 +146,14 @@ export default function RewardsPage() {
                       <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-warningOrange/15 text-warningOrange border border-warningOrange/30">
                         {r.milestone_referrals_required} Referrals Req.
                       </span>
-                      <span className="text-[10px] uppercase text-cyanAccent font-bold bg-cyanAccent/10 px-2 py-0.5 rounded border border-cyanAccent/20">
-                        {r.type}
+                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${
+                        r.type === 'telegram_premium'
+                          ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                          : r.type === 'telegram_stars'
+                          ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                          : 'bg-cyanAccent/10 text-cyanAccent border-cyanAccent/20'
+                      }`}>
+                        {r.type === 'telegram_premium' ? '⭐ Telegram Premium' : r.type === 'telegram_stars' ? '⭐ Telegram Stars' : r.type}
                       </span>
                     </div>
 

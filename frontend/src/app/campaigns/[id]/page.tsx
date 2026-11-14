@@ -227,7 +227,16 @@ export default function CampaignDetailPage() {
                   <tbody className="divide-y divide-slate-800/60">
                     {referrals.map((ref) => (
                       <tr key={ref._id} className="hover:bg-slate-800/30 transition-colors">
-                        <td className="py-3 px-3.5 font-mono text-slate-300">{ref.referred_telegram_id}</td>
+                        <td className="py-3 px-3.5 font-mono text-slate-300">
+                          <div className="flex items-center gap-1.5">
+                            <span>{ref.referred_telegram_id}</span>
+                            {ref.is_premium && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                                ⭐ Premium
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-3.5 font-mono text-electric">{ref.referrer_telegram_id}</td>
                         <td className="py-3 px-3.5">
                           <span
@@ -242,7 +251,16 @@ export default function CampaignDetailPage() {
                             {ref.status}
                           </span>
                         </td>
-                        <td className="py-3 px-3.5 font-semibold text-white">+{ref.points_awarded || 0}</td>
+                        <td className="py-3 px-3.5 font-semibold text-white">
+                          <div className="flex items-center gap-1">
+                            <span>+{ref.points_awarded || 0}</span>
+                            {ref.is_premium_multiplier_applied && (
+                              <span className="text-[9px] text-amber-400 font-bold bg-amber-400/10 px-1 py-0.5 rounded border border-amber-400/20">
+                                2x
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-3 px-3.5 text-slate-500 text-[11px]">
                           {new Date(ref.joined_at || ref.created_at).toLocaleDateString()}
                         </td>
@@ -300,7 +318,12 @@ export default function CampaignDetailPage() {
                           #{idx + 1}
                         </span>
                         <div>
-                          <span className="text-xs font-semibold text-white block">{user.first_name || 'Member'}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-semibold text-white block">{user.first_name || 'Member'}</span>
+                            {user.is_premium && (
+                              <span className="text-[10px]" title="Telegram Premium Member">⭐</span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-500 font-mono">ID: {user.user_telegram_id}</span>
                         </div>
                       </div>
