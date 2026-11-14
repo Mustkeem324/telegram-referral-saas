@@ -19,6 +19,7 @@ import {
   Layers,
   ChevronRight,
   ExternalLink,
+  BookOpen,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -127,6 +128,35 @@ export default function DashboardPage() {
             >
               <Plus className="w-4 h-4" />
               <span>New Campaign</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Quick Tutorial & System Guide Banner */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-navy-800 via-navy-800 to-electric/10 border border-electric/25 p-5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-electric/15 text-electric border border-electric/30 flex items-center justify-center shrink-0">
+              <BookOpen className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white">How TeleGrowth Works</span>
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-cyanAccent/10 text-cyanAccent border border-cyanAccent/20">
+                  Interactive Guide
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                New to the platform? Learn how bot invite attribution, anti-fraud hold periods, and automated rewards operate.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href="/how-it-works"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-electric/15 hover:bg-electric text-electric hover:text-white border border-electric/30 text-xs font-bold transition shadow-sm"
+            >
+              <span>Explore Tutorial</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </Link>
           </div>
         </div>

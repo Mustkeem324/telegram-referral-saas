@@ -12,7 +12,11 @@ import {
   ConnectedBot,
   Campaign,
   ReferralCode,
+  ReferralLink,
+  Referral,
+  Reward,
   SupportTicket,
+  CampaignRequirement,
 } from '../../database/models';
 
 export class TelegramService {
@@ -60,7 +64,41 @@ export class TelegramService {
   }
 
   /**
-   * Initialize central Telegram SaaS Bot
+   * Helper to build the main interactive menu keyboard
+   */
+  private static getMainMenuKeyboard(): any {
+    const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
+    return {
+      inline_keyboard: [
+        [
+          { text: '📖 How It Works', callback_data: 'cb_guide_main' },
+          { text: '🔗 My Invite Link', callback_data: 'cb_get_link' },
+        ],
+        [
+          { text: '📊 My Stats & Rank', callback_data: 'cb_my_stats' },
+          { text: '🏆 Top Leaderboard', callback_data: 'cb_leaderboard' },
+        ],
+        [
+          { text: '🎁 Milestone Rewards', callback_data: 'cb_rewards' },
+          { text: '🛡️ Anti-Fraud Rules', callback_data: 'cb_rules' },
+        ],
+        [
+          { text: '📢 Add Bot to Channel', callback_data: 'cb_channels' },
+          { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
+        ],
+        [
+          dashBtn,
+          { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
+        ],
+        [
+          { text: '❓ Frequently Asked Questions', callback_data: 'cb_faq' },
+        ],
+      ],
+    };
+  }
+
+  /**
+   * Initialize central Telegram Bot
    */
   static getBot(): Telegraf {
     if (!this.bot) {
@@ -79,14 +117,14 @@ export class TelegramService {
       logger.error(`Telegram Bot Error for ${ctx.updateType}:`, { error: err.message });
     });
 
-    // /start command - supports onboarding and referral deep linking
+    // /start command - supports onboarding, login auth, and referral deep linking
     bot.start(async (ctx) => {
       try {
         const from = ctx.from;
         if (!from) return;
 
         const telegramId = String(from.id);
-        const startPayload = ctx.payload; // e.g. /start ref_xyz or campaign_123
+        const startPayload = ctx.payload;
 
         // Find or create user
         let user = await User.findOne({ telegram_id: telegramId });
@@ -190,40 +228,27 @@ export class TelegramService {
             if (campaign) {
               const welcomeMsg =
                 campaign.branding?.welcome_message ||
-                `🎉 Welcome to <b>${TelegramService.escapeHtml(campaign.title)}</b>!\n\nYou joined via an invitation. Make sure to stay in the channel to earn your rewards!`;
+                `🎉 Welcome to <b>${TelegramService.escapeHtml(campaign.title)}</b>!\n\nYou joined via an invitation link. Make sure to remain active in the channel to earn milestone rewards!`;
               await TelegramService.safeReply(ctx, welcomeMsg);
             }
           }
         }
 
-        const dashboardUrl = `${config.frontendUrl}/dashboard`;
         const firstName = TelegramService.escapeHtml(from.first_name || 'Creator');
         const welcomeText =
-          `👋 Welcome to <b>TeleGrowth</b>, ${firstName}!\n\n` +
-          `🚀 Supercharge your channels & groups with viral growth campaigns, referral milestones, automated rewards, and provably-fair giveaways.\n\n` +
-          `🖥 <b>Web Dashboard:</b> ${dashboardUrl}\n\n` +
-          `<b>Available Commands:</b>\n` +
-          `• /dashboard — Access your management dashboard\n` +
-          `• /campaigns — List and view your active campaigns\n` +
-          `• /create — Launch a new referral or giveaway campaign\n` +
-          `• /subscription — Manage your growth plan & upgrade with Telegram Stars\n` +
-          `• /analytics — Check growth metrics and referral stats\n` +
-          `• /help — Setup instructions and bot permissions guide\n` +
-          `• /support — Create a support inquiry\n` +
-          `• /paysupport — Inquire regarding billing and Telegram Stars`;
-
-        const dashBtn = this.makeWebButton('📊 Open Web Dashboard', '/dashboard', 'cmd_open_dashboard');
+          `👋 Welcome to <b>TeleGrowth — Growth & Referral Engine</b>, ${firstName}!\n\n` +
+          `🚀 TeleGrowth helps Telegram channels and communities grow virally with <b>cryptographic invite tracking</b>, <b>automated anti-fraud verification</b>, and <b>instant milestone rewards</b>.\n\n` +
+          `<b>✨ What would you like to do?</b>\n` +
+          `• <b>How It Works:</b> Learn the 4-step referral lifecycle\n` +
+          `• <b>My Invite Link:</b> Get your unique link to invite friends & earn points\n` +
+          `• <b>My Stats:</b> Check your verified joins, pending hold, and points\n` +
+          `• <b>Leaderboard:</b> See the top referrers across campaigns\n` +
+          `• <b>Rewards:</b> View unlockable milestone gift codes & prizes\n` +
+          `• <b>Add Bot:</b> Add @${config.telegram.botUsername} to your channel as admin\n\n` +
+          `<i>Use the buttons below to explore, or type /help for the command list:</i>`;
 
         await TelegramService.safeReply(ctx, welcomeText, {
-          reply_markup: {
-            inline_keyboard: [
-              [dashBtn],
-              [
-                { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
-                { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
-              ],
-            ],
-          },
+          reply_markup: TelegramService.getMainMenuKeyboard(),
         });
       } catch (err: any) {
         logger.error('Error handling /start:', { error: err.message, stack: err.stack });
@@ -235,16 +260,59 @@ export class TelegramService {
       }
     });
 
+    // /howitworks & /tutorial & /guide
+    bot.command(['howitworks', 'tutorial', 'guide'], async (ctx) => {
+      await TelegramService.sendHowItWorksOverview(ctx);
+    });
+
+    // /link & /invitelink
+    bot.command(['link', 'invitelink'], async (ctx) => {
+      await TelegramService.sendInviteLink(ctx);
+    });
+
+    // /stats & /mystats & /profile
+    bot.command(['stats', 'mystats', 'profile'], async (ctx) => {
+      await TelegramService.sendUserStats(ctx);
+    });
+
+    // /leaderboard & /top
+    bot.command(['leaderboard', 'top'], async (ctx) => {
+      await TelegramService.sendLeaderboard(ctx);
+    });
+
+    // /rewards & /milestones
+    bot.command(['rewards', 'milestones'], async (ctx) => {
+      await TelegramService.sendRewards(ctx);
+    });
+
+    // /channels & /connect
+    bot.command(['channels', 'connect'], async (ctx) => {
+      await TelegramService.sendChannelsGuide(ctx);
+    });
+
+    // /rules & /antifraud
+    bot.command(['rules', 'antifraud'], async (ctx) => {
+      await TelegramService.sendAntiFraudRules(ctx);
+    });
+
+    // /faq
+    bot.command('faq', async (ctx) => {
+      await TelegramService.sendFAQ(ctx);
+    });
+
     // /dashboard
     bot.command('dashboard', async (ctx) => {
       const url = `${config.frontendUrl}/dashboard`;
       const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
       await TelegramService.safeReply(
         ctx,
-        `🖥 <b>Creator Dashboard</b>\n\nLink: ${url}\n\nClick below to launch:`,
+        `🖥 <b>TeleGrowth Creator Dashboard</b>\n\nAccess your real-time analytics, campaigns, connected channels, and anti-fraud monitor:\n\n🌐 <code>${url}</code>`,
         {
           reply_markup: {
-            inline_keyboard: [[dashBtn]],
+            inline_keyboard: [
+              [dashBtn],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
           },
         }
       );
@@ -281,6 +349,7 @@ export class TelegramService {
           inline_keyboard: [
             [{ text: '➕ New Campaign', callback_data: 'cmd_create_campaign' }],
             [analyticsBtn],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
           ],
         },
       });
@@ -292,10 +361,13 @@ export class TelegramService {
       const createBtn = this.makeWebButton('✨ Launch Creator Studio', '/campaigns/new', 'cmd_create_campaign');
       await TelegramService.safeReply(
         ctx,
-        `🛠 <b>Launch a New Campaign</b>\n\nLink: ${url}\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, open Creator Studio:`,
+        `🛠 <b>Launch a New Campaign</b>\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, open Creator Studio:\n\n🌐 <code>${url}</code>`,
         {
           reply_markup: {
-            inline_keyboard: [[createBtn]],
+            inline_keyboard: [
+              [createBtn],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
           },
         }
       );
@@ -327,6 +399,7 @@ export class TelegramService {
           inline_keyboard: [
             [{ text: '⭐ Upgrade with Stars', callback_data: 'cmd_upgrade_stars' }],
             [billingBtn],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
           ],
         },
       });
@@ -338,10 +411,13 @@ export class TelegramService {
       const analyticsBtn = this.makeWebButton('📊 View Analytics', '/dashboard', 'cmd_view_analytics');
       await TelegramService.safeReply(
         ctx,
-        `📈 <b>Live Campaign Analytics</b>\n\nLink: ${url}\n\nView real-time join charts, conversion rates, and top referrers:`,
+        `📈 <b>Live Campaign Analytics</b>\n\nView real-time join charts, conversion rates, and top referrers:\n\n🌐 <code>${url}</code>`,
         {
           reply_markup: {
-            inline_keyboard: [[analyticsBtn]],
+            inline_keyboard: [
+              [analyticsBtn],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
           },
         }
       );
@@ -350,16 +426,39 @@ export class TelegramService {
     // /help
     bot.command('help', async (ctx) => {
       const text =
-        `📖 <b>How to Connect Your Telegram Channel or Group:</b>\n\n` +
-        `1. Open your Channel or Group settings in Telegram.\n` +
-        `2. Go to <b>Administrators</b> > <b>Add Admin</b>.\n` +
-        `3. Search for @${config.telegram.botUsername} and add it.\n` +
-        `4. Ensure the <b>"Invite Users via Link"</b> permission is <b>ENABLED</b>.\n` +
-        `5. Open your Dashboard (${config.frontendUrl}/channels), navigate to <b>Connected Chats</b>, and click <b>Verify Connection</b>.\n\n` +
-        `💡 <i>Why is invite permission required?</i>\n` +
-        `The platform generates unique invite links for every participant so that each member's referrals are tracked 100% accurately without spoofing.`;
+        `📖 <b>TeleGrowth Bot Commands Guide:</b>\n\n` +
+        `<b>For Community Members & Referrers:</b>\n` +
+        `• /howitworks — Step-by-step interactive visual tutorial\n` +
+        `• /link — Get your unique attributed Telegram invite link\n` +
+        `• /stats — View your verified joins, hold status, and points\n` +
+        `• /leaderboard — View top referrers across active campaigns\n` +
+        `• /rewards — Check milestone rewards and claim progress\n` +
+        `• /rules — Anti-fraud guidelines & verification hold requirements\n` +
+        `• /faq — Frequently asked questions & answers\n\n` +
+        `<b>For Community Admins & Creators:</b>\n` +
+        `• /dashboard — Open the full creator web dashboard\n` +
+        `• /channels — Connect your channel or group with 1-click admin\n` +
+        `• /campaigns — List all active viral growth campaigns\n` +
+        `• /create — Launch a new campaign in Creator Studio\n` +
+        `• /subscription — Upgrade plan limits with Telegram Stars ⭐\n` +
+        `• /analytics — Live join charts and conversion telemetry\n` +
+        `• /support — Contact platform support engineers`;
 
-      await TelegramService.safeReply(ctx, text);
+      await TelegramService.safeReply(ctx, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '📖 How It Works', callback_data: 'cb_guide_main' },
+              { text: '🔗 My Invite Link', callback_data: 'cb_get_link' },
+            ],
+            [
+              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+            ],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+          ],
+        },
+      });
     });
 
     // /support & /paysupport
@@ -378,7 +477,7 @@ export class TelegramService {
           {
             sender_telegram_id: tgId,
             sender_role: 'user',
-            message: `User requested support via Telegram bot command ${msgText}`,
+            message: `User requested support via Telegram bot command: ${msgText}`,
             timestamp: new Date(),
           },
         ],
@@ -386,11 +485,86 @@ export class TelegramService {
 
       await TelegramService.safeReply(
         ctx,
-        `✅ Support ticket created!\nOur support engineers have received your inquiry and will contact you directly here on Telegram.`
+        `✅ <b>Support Ticket Created!</b>\n\nOur platform support engineers have received your inquiry and will message you directly here on Telegram.\n\nTicket Category: <code>${category.toUpperCase()}</code>`
       );
     });
 
-    // Callback queries
+    // ----------------------------------------------------
+    // Interactive Callback Queries
+    // ----------------------------------------------------
+    bot.action('cb_menu', async (ctx) => {
+      await ctx.answerCbQuery();
+      const from = ctx.from;
+      const firstName = TelegramService.escapeHtml(from?.first_name || 'Creator');
+      await TelegramService.safeReply(
+        ctx,
+        `👋 <b>Main Menu</b> — Welcome back, <b>${firstName}</b>!\n\nSelect an option below:`,
+        {
+          reply_markup: TelegramService.getMainMenuKeyboard(),
+        }
+      );
+    });
+
+    bot.action('cb_guide_main', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendHowItWorksOverview(ctx);
+    });
+
+    bot.action('cb_guide_creators', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendCreatorsGuide(ctx);
+    });
+
+    bot.action('cb_guide_referrers', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendReferrersGuide(ctx);
+    });
+
+    bot.action('cb_guide_antifraud', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendAntiFraudRules(ctx);
+    });
+
+    bot.action('cb_guide_rewards', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendRewards(ctx);
+    });
+
+    bot.action('cb_get_link', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendInviteLink(ctx);
+    });
+
+    bot.action('cb_my_stats', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendUserStats(ctx);
+    });
+
+    bot.action('cb_leaderboard', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendLeaderboard(ctx);
+    });
+
+    bot.action('cb_rewards', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendRewards(ctx);
+    });
+
+    bot.action('cb_channels', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendChannelsGuide(ctx);
+    });
+
+    bot.action('cb_rules', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendAntiFraudRules(ctx);
+    });
+
+    bot.action('cb_faq', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendFAQ(ctx);
+    });
+
     bot.action('cmd_open_dashboard', async (ctx) => {
       await ctx.answerCbQuery();
       await TelegramService.safeReply(
@@ -441,7 +615,6 @@ export class TelegramService {
         const update = ctx.myChatMember;
         const chat = update.chat as any;
         const newStatus = update.new_chat_member.status;
-        const botId = String(ctx.botInfo.id);
 
         logger.info(`my_chat_member update in chat ${chat.id} (${chat.title || 'chat'}), status: ${newStatus}`);
 
@@ -449,7 +622,6 @@ export class TelegramService {
           const adminMember = update.new_chat_member as any;
           const canInvite = Boolean(adminMember.can_invite_users);
 
-          // Find if this chat was registered or needs to be updated
           const fromUser = update.from;
           const fromTgId = String(fromUser.id);
           const user = await User.findOne({ telegram_id: fromTgId });
@@ -529,6 +701,466 @@ export class TelegramService {
         }
       }
       return next();
+    });
+  }
+
+  // ----------------------------------------------------
+  // Detailed Tutorial & Feature Helpers
+  // ----------------------------------------------------
+
+  /**
+   * Main How It Works Overview
+   */
+  static async sendHowItWorksOverview(ctx: Context): Promise<void> {
+    const text =
+      `📖 <b>How TeleGrowth Works — The Complete Growth Guide</b>\n\n` +
+      `TeleGrowth turns your Telegram channels & communities into viral referral engines with 100% accurate join attribution and fraud protection.\n\n` +
+      `<b>🔄 The 4-Step Lifecycle:</b>\n\n` +
+      `<b>1. 📢 Creator Connects Chat:</b>\n` +
+      `The community owner adds @${config.telegram.botUsername} as an admin with <i>"Invite Users via Link"</i> permission.\n\n` +
+      `<b>2. 🔗 Member Gets Unique Link:</b>\n` +
+      `Members run /link to receive a cryptographic Telegram invite link tied strictly to their account.\n\n` +
+      `<b>3. 🛡️ Verification & Anti-Fraud Hold:</b>\n` +
+      `When friends join via the link, TeleGrowth verifies them in real time. Disposable bots and fake accounts are rejected. Honest members pass the retention hold period.\n\n` +
+      `<b>4. 🎁 Rewards & Leaderboard:</b>\n` +
+      `Referrers earn points, climb the community leaderboard, and automatically unlock milestone prizes (gift codes, vouchers, VIP access, giveaway tickets).\n\n` +
+      `<i>Tap below for specialized role guides:</i>`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🏗️ For Channel Owners', callback_data: 'cb_guide_creators' },
+            { text: '👥 For Referrers', callback_data: 'cb_guide_referrers' },
+          ],
+          [
+            { text: '🛡️ Anti-Fraud Rules', callback_data: 'cb_guide_antifraud' },
+            { text: '🎁 Milestone Rewards', callback_data: 'cb_guide_rewards' },
+          ],
+          [
+            { text: '❓ View FAQs', callback_data: 'cb_faq' },
+            { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+          ],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Creator Guide
+   */
+  static async sendCreatorsGuide(ctx: Context): Promise<void> {
+    const text =
+      `🏗️ <b>Creator & Channel Admin Tutorial:</b>\n\n` +
+      `<b>Step 1: Add Bot to Your Channel or Group</b>\n` +
+      `• Open your Telegram channel or group info.\n` +
+      `• Go to <b>Administrators</b> ➔ <b>Add Admin</b>.\n` +
+      `• Search for <code>@${config.telegram.botUsername}</code>.\n` +
+      `• Enable <b>"Invite Users via Link"</b> (Required to generate attribution links).\n\n` +
+      `<b>Step 2: Verify in Web Dashboard</b>\n` +
+      `• Open ${config.frontendUrl}/channels\n` +
+      `• Click <b>Verify Connection</b> or run /channels.\n\n` +
+      `<b>Step 3: Create a Growth Campaign</b>\n` +
+      `• Run /create or open ${config.frontendUrl}/campaigns/new\n` +
+      `• Choose points per referral, retention hold days (e.g. 3 days), and anti-fraud sensitivity.\n\n` +
+      `<b>Step 4: Configure Milestone Rewards & Raffles</b>\n` +
+      `• Set reward milestones (e.g., 5 invites = Telegram Premium or Promo Code).\n` +
+      `• TeleGrowth automatically delivers the codes via bot DM as members hit each milestone!`;
+
+    const addBotUrl = `https://t.me/${config.telegram.botUsername}?startgroup=true&admin=invite_users`;
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '➕ Add Bot to Channel Now', url: addBotUrl }],
+          [
+            { text: '👥 For Referrers', callback_data: 'cb_guide_referrers' },
+            { text: '🛡️ Anti-Fraud Rules', callback_data: 'cb_guide_antifraud' },
+          ],
+          [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Referrers Guide
+   */
+  static async sendReferrersGuide(ctx: Context): Promise<void> {
+    const text =
+      `👥 <b>Community Referrer Tutorial — How to Earn Rewards:</b>\n\n` +
+      `<b>Step 1: Get Your Personal Invite Link</b>\n` +
+      `• Send /link or tap <b>"My Invite Link"</b> below.\n` +
+      `• TeleGrowth generates a unique Telegram link created specifically for you.\n\n` +
+      `<b>Step 2: Share with Friends & Social Media</b>\n` +
+      `• Share your link on Telegram, WhatsApp, Twitter/X, Discord, or blogs.\n` +
+      `• When someone taps your link and joins the channel, it is attributed to you immediately.\n\n` +
+      `<b>Step 3: Verification & Retention Hold</b>\n` +
+      `• The new member must stay in the channel for the retention duration (e.g., 24-72 hours).\n` +
+      `• Once verified, your points are confirmed and you climb the leaderboard!\n\n` +
+      `<b>Step 4: Claim Your Prizes</b>\n` +
+      `• Type /stats to check your points and rank.\n` +
+      `• Type /rewards to see unlocked codes and milestone vouchers delivered to your chat!`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔗 Get My Invite Link', callback_data: 'cb_get_link' },
+            { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+          ],
+          [
+            { text: '🏆 View Leaderboard', callback_data: 'cb_leaderboard' },
+            { text: '🎁 View Rewards', callback_data: 'cb_rewards' },
+          ],
+          [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Anti-Fraud & Fair Play Rules
+   */
+  static async sendAntiFraudRules(ctx: Context): Promise<void> {
+    const text =
+      `🛡️ <b>Anti-Fraud & Fair Play System:</b>\n\n` +
+      `To ensure real, authentic audience growth, TeleGrowth employs a multi-tiered security engine:\n\n` +
+      `• <b>⏳ Retention Hold Period:</b>\n` +
+      `Referred members must remain joined in the channel for the campaign's retention period (typically 24–72 hours). If a member leaves early, the referral is automatically voided.\n\n` +
+      `• <b>🤖 Bot & Disposable Account Detection:</b>\n` +
+      `Accounts created recently or lacking typical human Telegram activity are flagged and quarantined.\n\n` +
+      `• <b>🚫 Self-Referral Prevention:</b>\n` +
+      `Joining through your own invite link or using secondary clones on the same device/IP is automatically detected and blocked.\n\n` +
+      `• <b>🍯 Honeypot Traps:</b>\n` +
+      `Automated scraper bots that mass-click links trigger honeypot triggers and are banned immediately.\n\n` +
+      `<i>Always invite genuine users who are interested in the community!</i>`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔗 Get My Invite Link', callback_data: 'cb_get_link' },
+            { text: '📖 How It Works', callback_data: 'cb_guide_main' },
+          ],
+          [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Frequently Asked Questions (FAQ)
+   */
+  static async sendFAQ(ctx: Context): Promise<void> {
+    const text =
+      `❓ <b>Frequently Asked Questions (FAQ):</b>\n\n` +
+      `<b>Q: Why is my referral showing as "Pending"?</b>\n` +
+      `A: The campaign has a retention hold period (e.g. 24–72h). Once the new member stays in the channel for this duration, it automatically flips to <b>Verified</b> and awards points.\n\n` +
+      `<b>Q: How do I claim milestone rewards?</b>\n` +
+      `A: When your verified referrals reach a milestone threshold, TeleGrowth automatically delivers your reward (gift code, access link, or voucher) right here in your direct messages!\n\n` +
+      `<b>Q: Can I use this for multiple channels?</b>\n` +
+      `A: Yes! You can connect multiple channels and groups, each with its own customized campaign and rewards.\n\n` +
+      `<b>Q: How do I upgrade my campaign limits?</b>\n` +
+      `A: Community creators can upgrade using Telegram Stars ⭐ or Card in the /subscription menu or web billing portal.`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: '🔗 Get Invite Link', callback_data: 'cb_get_link' },
+            { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+          ],
+          [
+            { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
+            { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+          ],
+        ],
+      },
+    });
+  }
+
+  /**
+   * Get or generate user's personal invite link
+   */
+  static async sendInviteLink(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      // Find active campaign: first check user's workspace, else any active public campaign
+      const user = await User.findOne({ telegram_id: tgId });
+      let member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+
+      let campaign = member
+        ? await Campaign.findOne({ workspace_id: member.workspace_id, status: 'active' })
+        : null;
+
+      if (!campaign) {
+        campaign = await Campaign.findOne({ status: 'active' });
+      }
+
+      if (!campaign) {
+        return this.safeReply(
+          ctx,
+          `⚠️ <b>No Active Campaign Available</b>\n\nThere are currently no active referral campaigns configured. If you are a creator, use /create to launch one!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' }],
+                [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+              ],
+            },
+          }
+        );
+      }
+
+      // Find required chat
+      const requirement = await CampaignRequirement.findOne({ campaign_id: campaign._id });
+      if (!requirement || !requirement.chat_id) {
+        return this.safeReply(
+          ctx,
+          `⚠️ <b>Campaign Chat Not Connected</b>\n\nThe campaign <b>${this.escapeHtml(campaign.title)}</b> does not have a verified Telegram chat attached yet.`
+        );
+      }
+
+      const { ReferralService } = await import('../referrals/referral.service');
+      const inviteLink = await ReferralService.getOrCreateChatInviteLink({
+        workspaceId: campaign.workspace_id,
+        campaignId: campaign._id,
+        userTelegramId: tgId,
+        chatId: requirement.chat_id,
+      });
+
+      const shareText = encodeURIComponent(`Join our channel via my exclusive invite link: ${inviteLink}`);
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${shareText}`;
+
+      const text =
+        `🔗 <b>Your Exclusive Telegram Invite Link:</b>\n\n` +
+        `Campaign: <b>${this.escapeHtml(campaign.title)}</b>\n` +
+        `Reward: <b>+${campaign.reward_policy?.points_per_referral || 10} Points</b> per verified join\n\n` +
+        `<code>${inviteLink}</code>\n\n` +
+        `💡 <i>Every member who joins through this link is attributed to your account automatically. Tap below to copy or share directly to your Telegram contacts!</i>`;
+
+      await this.safeReply(ctx, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🚀 Share Link on Telegram', url: shareUrl }],
+            [
+              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+            ],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+          ],
+        },
+      });
+    } catch (err: any) {
+      logger.error('Error generating invite link in bot:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Could not generate invite link at this moment: ${err.message}`);
+    }
+  }
+
+  /**
+   * User Stats & Rank
+   */
+  static async sendUserStats(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const [totalCount, verifiedCount, pendingCount, referrals] = await Promise.all([
+        Referral.countDocuments({ referrer_telegram_id: tgId }),
+        Referral.countDocuments({ referrer_telegram_id: tgId, status: { $in: ['verified', 'rewarded'] } }),
+        Referral.countDocuments({ referrer_telegram_id: tgId, status: { $in: ['joined', 'verification_pending', 'pending'] } }),
+        Referral.find({ referrer_telegram_id: tgId }),
+      ]);
+
+      const pointsEarned = referrals.reduce((sum, r) => sum + (r.points_awarded || 0), 0);
+
+      // Compute rank among all referrers
+      const topAgg = await Referral.aggregate([
+        { $match: { status: { $in: ['verified', 'rewarded'] } } },
+        { $group: { _id: '$referrer_telegram_id', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ]);
+
+      const rankIndex = topAgg.findIndex((item) => item._id === tgId);
+      const rankText = rankIndex >= 0 ? `#${rankIndex + 1}` : 'Unranked';
+
+      const firstName = this.escapeHtml(ctx.from?.first_name || 'Member');
+      const text =
+        `📊 <b>Your Personal Referral Statistics:</b>\n\n` +
+        `👤 User: <b>${firstName}</b> (<code>${tgId}</code>)\n` +
+        `🏆 Community Rank: <b>${rankText}</b>\n\n` +
+        `• <b>Total Referrals:</b> ${totalCount}\n` +
+        `• <b>Verified Joins:</b> ${verifiedCount} ✅\n` +
+        `• <b>Pending Hold:</b> ${pendingCount} ⏳\n` +
+        `• <b>Total Points:</b> ${pointsEarned} ⭐\n\n` +
+        `💡 <i>Share your link to earn more points and unlock milestone rewards!</i>`;
+
+      await this.safeReply(ctx, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔗 Get Invite Link', callback_data: 'cb_get_link' },
+              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+            ],
+            [
+              { text: '🎁 Milestone Rewards', callback_data: 'cb_rewards' },
+              { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+            ],
+          ],
+        },
+      });
+    } catch (err: any) {
+      logger.error('Error fetching user stats:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Could not retrieve stats: ${err.message}`);
+    }
+  }
+
+  /**
+   * Top Referrers Leaderboard
+   */
+  static async sendLeaderboard(ctx: Context): Promise<void> {
+    try {
+      const topReferrers = await Referral.aggregate([
+        { $match: { status: { $in: ['verified', 'rewarded'] } } },
+        {
+          $group: {
+            _id: '$referrer_telegram_id',
+            verified_count: { $sum: 1 },
+            points: { $sum: '$points_awarded' },
+          },
+        },
+        { $sort: { verified_count: -1 } },
+        { $limit: 10 },
+      ]);
+
+      if (topReferrers.length === 0) {
+        return this.safeReply(
+          ctx,
+          `🏆 <b>Community Leaderboard:</b>\n\nNo referrals have been verified yet. Be the first by grabbing your link with /link!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔗 Get My Invite Link', callback_data: 'cb_get_link' }],
+                [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+              ],
+            },
+          }
+        );
+      }
+
+      // Fetch user names
+      const tgIds = topReferrers.map((r) => r._id);
+      const users = await User.find({ telegram_id: { $in: tgIds } });
+      const userMap = new Map<string, string>();
+      users.forEach((u) => {
+        userMap.set(u.telegram_id, u.first_name || (u.username ? `@${u.username}` : `User ${u.telegram_id}`));
+      });
+
+      let text = `🏆 <b>Top Referrers Leaderboard:</b>\n\n`;
+      topReferrers.forEach((entry, idx) => {
+        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+        const name = this.escapeHtml(userMap.get(entry._id) || `Member ${entry._id}`);
+        text += `${medal} <b>${name}</b>: <b>${entry.verified_count}</b> verified (${entry.points} pts)\n`;
+      });
+
+      text += `\n💡 <i>Keep inviting to climb the ranks and win top milestone rewards!</i>`;
+
+      await this.safeReply(ctx, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔗 Get My Invite Link', callback_data: 'cb_get_link' },
+              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+            ],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+          ],
+        },
+      });
+    } catch (err: any) {
+      logger.error('Error fetching leaderboard:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Could not retrieve leaderboard: ${err.message}`);
+    }
+  }
+
+  /**
+   * Milestone Rewards & Claims
+   */
+  static async sendRewards(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      const verifiedCount = await Referral.countDocuments({
+        referrer_telegram_id: tgId,
+        status: { $in: ['verified', 'rewarded'] },
+      });
+
+      const rewards = await Reward.find({ is_active: true })
+        .sort({ milestone_referrals_required: 1 })
+        .limit(8);
+
+      let text = `🎁 <b>Milestone Rewards & Prizes:</b>\n\n` +
+                 `Your Verified Referrals: <b>${verifiedCount}</b> ✅\n\n`;
+
+      if (rewards.length === 0) {
+        text += `• <b>Bronze Tier:</b> 5 Verified Invites ➔ VIP Member Badge\n` +
+                `• <b>Silver Tier:</b> 10 Verified Invites ➔ Premium Promo Voucher\n` +
+                `• <b>Gold Tier:</b> 25 Verified Invites ➔ Secret Channel Access\n` +
+                `• <b>Diamond Tier:</b> 50 Verified Invites ➔ 1-Month Telegram Premium\n\n`;
+      } else {
+        rewards.forEach((r) => {
+          const unlocked = verifiedCount >= r.milestone_referrals_required;
+          const statusIcon = unlocked ? '✅ UNLOCKED' : `🔒 Needs ${r.milestone_referrals_required - verifiedCount} more`;
+          text += `• <b>${this.escapeHtml(r.name)}</b> (${r.milestone_referrals_required} invites)\n` +
+                  `  Status: <code>${statusIcon}</code>\n` +
+                  `  Type: ${r.type}\n\n`;
+        });
+      }
+
+      text += `💡 <i>Rewards are delivered automatically to your Telegram DM as soon as your referrals hit the required milestone!</i>`;
+
+      await this.safeReply(ctx, text, {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: '🔗 Get My Invite Link', callback_data: 'cb_get_link' },
+              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+            ],
+            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+          ],
+        },
+      });
+    } catch (err: any) {
+      logger.error('Error fetching rewards in bot:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Could not load rewards: ${err.message}`);
+    }
+  }
+
+  /**
+   * Connect Channel Guide & Link
+   */
+  static async sendChannelsGuide(ctx: Context): Promise<void> {
+    const addBotUrl = `https://t.me/${config.telegram.botUsername}?startgroup=true&admin=invite_users`;
+    const text =
+      `📢 <b>How to Connect Your Telegram Channel or Group:</b>\n\n` +
+      `<b>1-Click Quick Add:</b>\n` +
+      `Tap the button below to add @${config.telegram.botUsername} directly to your channel or group as an Administrator.\n\n` +
+      `<b>Required Permissions:</b>\n` +
+      `• <b>Invite Users via Link</b> (MANDATORY for referral attribution)\n` +
+      `• <b>Manage Chat</b> (for member tracking)\n\n` +
+      `<b>Why is invite permission required?</b>\n` +
+      `TeleGrowth creates individual cryptographically-tracked invite links via Telegram Bot API so every join is attributed 100% reliably.`;
+
+    await this.safeReply(ctx, text, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '➕ Add @' + config.telegram.botUsername + ' as Admin', url: addBotUrl }],
+          [
+            { text: '🌐 View Connected Chats', callback_data: 'cmd_open_dashboard' },
+            { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+          ],
+        ],
+      },
     });
   }
 

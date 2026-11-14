@@ -17,6 +17,7 @@ import {
   ExternalLink,
   X,
   Sparkles,
+  BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -30,6 +31,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'How It Works', href: '/how-it-works', icon: BookOpen },
     { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
     { name: 'Connected Chats', href: '/channels', icon: Radio },
     { name: 'Milestone Rewards', href: '/rewards', icon: Award },
