@@ -11,6 +11,9 @@ export interface IUser extends Document {
   is_active: boolean;
   banned_at?: Date;
   ban_reason?: string;
+  referred_by_telegram_id?: string;
+  referred_by_code?: string;
+  referred_campaign_id?: mongoose.Types.ObjectId;
   created_at: Date;
   updated_at: Date;
 }
@@ -27,6 +30,9 @@ const UserSchema = new Schema<IUser>(
     is_active: { type: Boolean, default: true, index: true },
     banned_at: { type: Date },
     ban_reason: { type: String },
+    referred_by_telegram_id: { type: String, index: true },
+    referred_by_code: { type: String },
+    referred_campaign_id: { type: Schema.Types.ObjectId, ref: 'Campaign' },
   },
   { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } }
 );

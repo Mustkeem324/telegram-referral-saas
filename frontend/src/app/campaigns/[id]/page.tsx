@@ -20,6 +20,8 @@ import {
   Layers,
   Clock,
   Coins,
+  Bot,
+  Share2,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -32,6 +34,8 @@ export default function CampaignDetailPage() {
   const [referrals, setReferrals] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [myInviteLink, setMyInviteLink] = useState<string>('');
+  const [myBotDeepLink, setMyBotDeepLink] = useState<string>('');
+  const [linkType, setLinkType] = useState<'bot' | 'channel'>('bot');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +61,10 @@ export default function CampaignDetailPage() {
 
       // Generate user's referral link
       api.getReferralLink(id)
-        .then((res) => setMyInviteLink(res.invite_link))
+        .then((res) => {
+          setMyInviteLink(res.invite_link);
+          setMyBotDeepLink(res.bot_deep_link);
+        })
         .catch(console.error);
     } catch (err) {
       console.error(err);
@@ -66,9 +73,11 @@ export default function CampaignDetailPage() {
     }
   };
 
+  const currentDisplayLink = linkType === 'bot' ? (myBotDeepLink || myInviteLink) : (myInviteLink || myBotDeepLink);
+
   const copyToClipboard = () => {
-    if (myInviteLink) {
-      navigator.clipboard.writeText(myInviteLink);
+    if (currentDisplayLink) {
+      navigator.clipboard.writeText(currentDisplayLink);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -134,33 +143,75 @@ export default function CampaignDetailPage() {
         </div>
 
         {/* Invite link card */}
-        <div className="relative overflow-hidden rounded-2xl border border-electric/30 bg-gradient-to-r from-navy-800 via-navy-800/90 to-electric/5 p-6 shadow-card">
+        <div className="relative overflow-hidden rounded-2xl border border-electric/30 bg-gradient-to-r from-navy-800 via-navy-800/90 to-electric/5 p-6 shadow-card space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-electric" />
                 <span className="text-xs font-bold text-electric uppercase tracking-wider">
-                  Attributed Telegram Invite Link
+                  Attributed Telegram Referral Links
                 </span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
-                Generated via native Telegram Bot API with cryptographic attribution. Every member joining via this link is automatically verified and rewarded.
+                Every member joining via your links is cryptographically verified and rewarded. Choose between Bot Referral Link or Direct Channel Invite Link.
               </p>
             </div>
-            <div className="flex items-center gap-2 w-full lg:w-auto">
-              <input
-                type="text"
-                readOnly
-                value={myInviteLink || 'Generating unique link...'}
-                className="bg-navy-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-cyanAccent font-mono flex-1 lg:w-80 select-all focus:outline-none focus:border-electric transition"
-              />
+
+            <div className="flex items-center gap-2 bg-navy-900/90 p-1 rounded-xl border border-slate-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setLinkType('bot')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  linkType === 'bot'
+                    ? 'bg-electric text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                <span>Bot Link</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLinkType('channel')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  linkType === 'channel'
+                    ? 'bg-electric text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Radio className="w-3.5 h-3.5" />
+                <span>Channel Link</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 pt-2">
+            <input
+              type="text"
+              readOnly
+              value={currentDisplayLink || 'Generating unique link...'}
+              className="bg-navy-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-cyanAccent font-mono flex-1 w-full select-all focus:outline-none focus:border-electric transition"
+            />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={copyToClipboard}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-electric hover:bg-electric/90 text-xs font-semibold text-white transition-all shadow-md active:scale-95"
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-electric hover:bg-electric/90 text-xs font-bold text-white transition-all shadow-md active:scale-95"
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                {copied ? 'Copied' : 'Copy'}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
+
+              {currentDisplayLink && (
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(currentDisplayLink)}&text=${encodeURIComponent(`Join ${campaign.title} on Telegram!`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-navy-750 hover:bg-navy-700 border border-navy-650 text-xs font-bold text-slate-200 hover:text-white transition-all shadow-sm"
+                >
+                  <Share2 className="w-4 h-4 text-cyanAccent" />
+                  <span>Share</span>
+                </a>
+              )}
             </div>
           </div>
         </div>

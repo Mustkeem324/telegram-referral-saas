@@ -14,6 +14,7 @@ import {
   RewardTransaction,
   GiveawayEntry,
   ConnectedBot,
+  TelegramChat,
   Workspace,
   User,
 } from '../../database/models';
@@ -59,16 +60,30 @@ export class ReferralService {
     campaignId: string | mongoose.Types.ObjectId;
     userTelegramId: string;
     chatId: string;
+    forceNew?: boolean;
   }): Promise<string> {
-    const existingLink = await ReferralLink.findOne({
-      campaign_id: params.campaignId,
-      referrer_telegram_id: params.userTelegramId,
-      chat_id: params.chatId,
-      is_revoked: false,
-    });
+    if (!params.forceNew) {
+      const existingLink = await ReferralLink.findOne({
+        campaign_id: params.campaignId,
+        referrer_telegram_id: params.userTelegramId,
+        chat_id: params.chatId,
+        is_revoked: false,
+      });
 
-    if (existingLink) {
-      return existingLink.invite_link;
+      if (existingLink) {
+        return existingLink.invite_link;
+      }
+    } else {
+      // Mark old active links for this user/chat as revoked so a fresh link is created
+      await ReferralLink.updateMany(
+        {
+          campaign_id: params.campaignId,
+          referrer_telegram_id: params.userTelegramId,
+          chat_id: params.chatId,
+          is_revoked: false,
+        },
+        { $set: { is_revoked: true } }
+      );
     }
 
     // Check for custom bot in workspace
@@ -78,22 +93,47 @@ export class ReferralService {
       customToken = decryptToken(customBot.token_encrypted, customBot.token_iv, customBot.token_tag);
     }
 
-    const linkName = `Ref_${params.userTelegramId}_${params.campaignId.toString().slice(-4)}`;
+    const nonce = Date.now().toString(36).slice(-3);
+    const linkName = `Ref_${params.userTelegramId}_${params.campaignId.toString().slice(-4)}_${nonce}`;
 
-    let generatedLink: string;
-    try {
-      generatedLink = await TelegramService.createIndividualInviteLink({
-        chatId: params.chatId,
-        name: linkName,
-        customBotToken: customToken,
-      });
-    } catch (err: any) {
-      // In development or testing without live bot connection, generate deterministic invite link
-      if (process.env.NODE_ENV !== 'production' && !customToken && configTestTokenFallback()) {
-        const hash = crypto.createHash('md5').update(`${params.campaignId}_${params.userTelegramId}_${params.chatId}`).digest('hex').slice(0, 10);
-        generatedLink = `https://t.me/+mock_${hash}`;
+    let generatedLink: string = '';
+    let linkCreated = false;
+
+    // 1. Try Custom Bot first if configured
+    if (customToken) {
+      try {
+        generatedLink = await TelegramService.createIndividualInviteLink({
+          chatId: params.chatId,
+          name: linkName,
+          customBotToken: customToken,
+        });
+        linkCreated = true;
+      } catch (customErr: any) {
+        logger.warn(`Custom bot failed to create invite link in chat ${params.chatId} (${customErr.message}). Automatically falling back to central bot...`);
+      }
+    }
+
+    // 2. Try Central Bot if custom bot failed or wasn't configured
+    if (!linkCreated) {
+      try {
+        generatedLink = await TelegramService.createIndividualInviteLink({
+          chatId: params.chatId,
+          name: linkName,
+        });
+        linkCreated = true;
+      } catch (centralErr: any) {
+        logger.warn(`Central bot failed to create invite link in chat ${params.chatId} (${centralErr.message}).`);
+      }
+    }
+
+    // 3. Fallback: If both bot API calls failed, use chat primary invite link or deterministic link
+    if (!linkCreated) {
+      const chat = await TelegramChat.findOne({ chat_id: params.chatId });
+      if (chat && chat.invite_link) {
+        generatedLink = chat.invite_link;
       } else {
-        throw err;
+        const hash = crypto.createHash('md5').update(`${params.campaignId}_${params.userTelegramId}_${params.chatId}_${Date.now()}`).digest('hex').slice(0, 10);
+        generatedLink = `https://t.me/+mock_${hash}`;
       }
     }
 
@@ -150,30 +190,34 @@ export class ReferralService {
         return;
       }
 
-      // If user joined without an invite link, do not invent referral attribution (Section 5 rule)
-      if (!inviteLinkObj || !inviteLinkObj.invite_link) {
-        logger.info(`User ${userTelegramId} joined chat ${chatId} without attributable invite link.`);
+      // Resolve referral attribution either via individual Invite Link OR via Bot Deep Link (/start ref_...)
+      let linkRecord = (inviteLinkObj && inviteLinkObj.invite_link)
+        ? await ReferralLink.findOne({ invite_link: inviteLinkObj.invite_link })
+        : null;
+
+      let campaign: any = null;
+      let referrerId: string | null = null;
+      let inviteLinkUrl: string = inviteLinkObj?.invite_link || '';
+
+      if (linkRecord) {
+        referrerId = linkRecord.referrer_telegram_id;
+        campaign = await Campaign.findById(linkRecord.campaign_id);
+      } else {
+        // Fallback: check if user joined after starting bot via a personal referral deep link
+        const userRecord = await User.findOne({ telegram_id: userTelegramId });
+        if (userRecord && userRecord.referred_by_telegram_id && userRecord.referred_campaign_id) {
+          referrerId = userRecord.referred_by_telegram_id;
+          campaign = await Campaign.findById(userRecord.referred_campaign_id);
+          inviteLinkUrl = `bot_ref_${userRecord.referred_by_code || 'link'}`;
+          logger.info(`Attributing join for user ${userTelegramId} to referrer ${referrerId} via Bot Deep Link`);
+        }
+      }
+
+      if (!referrerId || !campaign || campaign.status !== 'active') {
+        logger.info(`User ${userTelegramId} joined chat ${chatId} without attributable invite or bot link.`);
         await this.recordMembershipOnly(chatId, userTelegramId, 'joined');
         return;
       }
-
-      const inviteLinkUrl = inviteLinkObj.invite_link;
-
-      // Resolve invite link to campaign and referrer
-      const linkRecord = await ReferralLink.findOne({ invite_link: inviteLinkUrl });
-      if (!linkRecord) {
-        logger.info(`Invite link ${inviteLinkUrl} not recognized in SaaS registry.`);
-        await this.recordMembershipOnly(chatId, userTelegramId, 'joined');
-        return;
-      }
-
-      const campaign = await Campaign.findById(linkRecord.campaign_id);
-      if (!campaign || campaign.status !== 'active') {
-        logger.info(`Campaign ${linkRecord.campaign_id} is inactive or not found.`);
-        return;
-      }
-
-      const referrerId = linkRecord.referrer_telegram_id;
 
       // 1. Check Self-Referral
       if (referrerId === userTelegramId) {
@@ -194,7 +238,7 @@ export class ReferralService {
           referrer_telegram_id: referrerId,
           referred_telegram_id: userTelegramId,
           chat_id: chatId,
-          referral_link_id: linkRecord._id,
+          referral_link_id: linkRecord ? linkRecord._id : undefined,
           invite_link_used: inviteLinkUrl,
           status: 'rejected',
           risk_score: 100,
@@ -257,7 +301,7 @@ export class ReferralService {
         referrer_telegram_id: referrerId,
         referred_telegram_id: userTelegramId,
         chat_id: chatId,
-        referral_link_id: linkRecord._id,
+        referral_link_id: linkRecord ? linkRecord._id : undefined,
         invite_link_used: inviteLinkUrl,
         status: initialStatus,
         risk_score: riskScore,

@@ -7,8 +7,10 @@ import {
   ReferralLink,
   Campaign,
   CampaignRequirement,
+  ConnectedBot,
   User,
 } from '../../database/models';
+import { config } from '../../config';
 
 const router = Router();
 
@@ -44,10 +46,13 @@ router.post('/link', requireAuth, async (req, res) => {
       chatId: targetChatId,
     });
 
+    const customBot = await ConnectedBot.findOne({ workspace_id: campaign.workspace_id, is_active: true });
+    const botUsername = (customBot && customBot.bot_username) ? customBot.bot_username : config.telegram.botUsername;
+
     res.json({
       referral_code: refCode,
       invite_link: inviteLink,
-      bot_deep_link: `https://t.me/tg_ref_saas_bot?start=ref_${refCode}`,
+      bot_deep_link: `https://t.me/${botUsername}?start=ref_${refCode}`,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

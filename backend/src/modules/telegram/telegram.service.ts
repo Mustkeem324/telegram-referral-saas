@@ -232,10 +232,50 @@ export class TelegramService {
 
             const campaign = await Campaign.findById(refRecord.campaign_id);
             if (campaign) {
+              if (from.id && String(from.id) !== refRecord.user_telegram_id) {
+                await User.findOneAndUpdate(
+                  { telegram_id: telegramId },
+                  {
+                    $set: {
+                      referred_by_telegram_id: refRecord.user_telegram_id,
+                      referred_by_code: code,
+                      referred_campaign_id: campaign._id,
+                    },
+                  }
+                );
+              }
+
+              const referrerUser = await User.findOne({ telegram_id: refRecord.user_telegram_id });
+              const referrerName = referrerUser
+                ? (referrerUser.first_name || referrerUser.username || 'a friend')
+                : 'a community member';
+
+              const req = await CampaignRequirement.findOne({ campaign_id: campaign._id });
+              const targetChat = req ? await TelegramChat.findOne({ chat_id: req.chat_id }) : null;
+
+              let joinChannelUrl = targetChat?.invite_link;
+              if (!joinChannelUrl && targetChat?.username) {
+                joinChannelUrl = `https://t.me/${targetChat.username}`;
+              }
+
               const welcomeMsg =
-                campaign.branding?.welcome_message ||
-                `🎉 Welcome to <b>${TelegramService.escapeHtml(campaign.title)}</b>!\n\nYou joined via an invitation link. Make sure to remain active in the channel to earn milestone rewards!`;
-              await TelegramService.safeReply(ctx, welcomeMsg);
+                `🎉 <b>Welcome to ${TelegramService.escapeHtml(campaign.title)}!</b>\n\n` +
+                `You were personally invited by <b>${TelegramService.escapeHtml(referrerName)}</b>.\n\n` +
+                `👉 <b>Next Step:</b> Join our community channel below to complete verification and unlock rewards!`;
+
+              const joinButtons: any[] = [];
+              if (joinChannelUrl) {
+                joinButtons.push([{ text: `📢 Join ${targetChat?.title || 'Community Channel'}`, url: joinChannelUrl }]);
+              }
+              joinButtons.push([
+                { text: '🔗 Get My Own Referral Link', callback_data: 'cb_get_link' },
+                { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+              ]);
+
+              await TelegramService.safeReply(ctx, welcomeMsg, {
+                reply_markup: { inline_keyboard: joinButtons },
+              });
+              return;
             }
           }
         }
@@ -554,6 +594,11 @@ export class TelegramService {
     bot.action('cb_get_link', async (ctx) => {
       await ctx.answerCbQuery();
       await TelegramService.sendInviteLink(ctx);
+    });
+
+    bot.action('cb_refresh_link', async (ctx) => {
+      await ctx.answerCbQuery('🔄 Generating fresh new invite link...');
+      await TelegramService.sendInviteLink(ctx, true);
     });
 
     bot.action('cb_my_stats', async (ctx) => {
@@ -923,9 +968,9 @@ export class TelegramService {
   }
 
   /**
-   * Get or generate user's personal invite link
+   * Get or generate user's personal invite link (both Bot Referral Deep Link & Direct Channel Link)
    */
-  static async sendInviteLink(ctx: Context): Promise<void> {
+  static async sendInviteLink(ctx: Context, forceNew: boolean = false): Promise<void> {
     try {
       const tgId = String(ctx.from?.id);
       if (!tgId) return;
@@ -972,15 +1017,29 @@ export class TelegramService {
       }
 
       const { ReferralService } = await import('../referrals/referral.service');
-      const inviteLink = await ReferralService.getOrCreateChatInviteLink({
-        workspaceId: campaign.workspace_id,
-        campaignId: campaign._id,
-        userTelegramId: tgId,
-        chatId: requirement.chat_id,
-      });
+      const [inviteLink, referralCode] = await Promise.all([
+        ReferralService.getOrCreateChatInviteLink({
+          workspaceId: campaign.workspace_id,
+          campaignId: campaign._id,
+          userTelegramId: tgId,
+          chatId: requirement.chat_id,
+          forceNew,
+        }),
+        ReferralService.getOrCreateReferralCode(
+          campaign.workspace_id,
+          campaign._id,
+          tgId
+        ),
+      ]);
 
-      const shareText = encodeURIComponent(`Join our channel via my exclusive invite link: ${inviteLink}`);
-      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${shareText}`;
+      const activeBotUsername = (ctx as any).customBotUsername || ctx.botInfo?.username || config.telegram.botUsername;
+      const botDeepLink = `https://t.me/${activeBotUsername}?start=ref_${referralCode}`;
+
+      const shareText = encodeURIComponent(`Join ${campaign.title} via my exclusive referral link: ${botDeepLink}`);
+      const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botDeepLink)}&text=${shareText}`;
+
+      const shareChannelText = encodeURIComponent(`Join ${campaign.title} channel via my invite link: ${inviteLink}`);
+      const shareChannelUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${shareChannelText}`;
 
       const basePoints = campaign.reward_policy?.points_per_referral || 10;
       const premiumMult = campaign.reward_policy?.premium_multiplier || 2;
@@ -991,22 +1050,33 @@ export class TelegramService {
         : '';
 
       const text =
-        `🔗 <b>Your Exclusive Telegram Invite Link:</b>\n\n` +
+        `🔗 <b>Your Exclusive Referral Links:</b>\n\n` +
         `Campaign: <b>${this.escapeHtml(campaign.title)}</b>\n` +
         `Standard Reward: <b>+${basePoints} Points</b> per verified join\n` +
         premiumBoosterNotice +
-        `\n<code>${inviteLink}</code>\n\n` +
-        `💡 <i>Every member who joins through this link is attributed to your account automatically. Tap below to copy or share directly to your Telegram contacts!</i>`;
+        `\n🤖 <b>1. Bot Referral Link (Recommended):</b>\n` +
+        `<code>${botDeepLink}</code>\n` +
+        `<i>👉 When friends tap this, they start the bot and join with automatic attribution.</i>\n\n` +
+        `📢 <b>2. Direct Channel Invite Link:</b>\n` +
+        `<code>${inviteLink}</code>\n` +
+        `<i>👉 Cryptographically tracked Telegram channel invite link.</i>\n\n` +
+        `💡 <i>Both links are 100% unique to your account (ID: <code>${tgId}</code>). Every joining member is verified and credited to you!</i>`;
 
       await this.safeReply(ctx, text, {
         reply_markup: {
           inline_keyboard: [
-            [{ text: '🚀 Share Link on Telegram', url: shareUrl }],
             [
-              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
-              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+              { text: '🚀 Share Bot Link', url: shareUrl },
+              { text: '📢 Share Channel Link', url: shareChannelUrl },
             ],
-            [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            [
+              { text: '🔄 Regenerate Fresh Link', callback_data: 'cb_refresh_link' },
+              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+            ],
+            [
+              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+              { text: '◀️ Main Menu', callback_data: 'cb_menu' },
+            ],
           ],
         },
       });
