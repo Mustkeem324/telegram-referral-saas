@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from './auth.service';
-import { User, IUser, Workspace, IWorkspace, WorkspaceMember, WorkspaceRole } from '../../database/models';
+import { User, IUser, Workspace, IWorkspace, WorkspaceMember, WorkspaceRole, SubscriptionPlan } from '../../database/models';
 import mongoose from 'mongoose';
 
 // Extend Express Request interface
@@ -59,10 +59,53 @@ export function requireWorkspace(minRole: WorkspaceRole = 'viewer') {
       return;
     }
 
-    const workspaceId =
+    let workspaceId =
       (req.headers['x-workspace-id'] as string) ||
       (req.query.workspaceId as string) ||
       req.body.workspace_id;
+
+    // Auto-resolve workspace if not provided in header
+    if (!workspaceId || !mongoose.Types.ObjectId.isValid(workspaceId)) {
+      if (req.user.role === 'superadmin') {
+        const adminWs =
+          (await Workspace.findOne({ owner_id: req.user._id })) ||
+          (await Workspace.findOne({ slug: 'superadmin-workspace' })) ||
+          (await Workspace.findOne());
+        if (adminWs) {
+          workspaceId = adminWs._id.toString();
+        }
+      } else {
+        const member = await WorkspaceMember.findOne({ user_id: req.user._id, status: 'active' });
+        if (member) {
+          workspaceId = member.workspace_id.toString();
+        }
+      }
+
+      // If user still has no workspace, automatically initialize one for them
+      if (!workspaceId) {
+        const freePlan =
+          (await SubscriptionPlan.findOne({ code: req.user.role === 'superadmin' ? 'enterprise' : 'free' })) ||
+          (await SubscriptionPlan.findOne());
+        if (freePlan) {
+          const newWs = await Workspace.create({
+            name: `${req.user.first_name || 'My'}'s Workspace`,
+            slug: `ws-${req.user.telegram_id}-${Date.now().toString(36)}`,
+            owner_id: req.user._id,
+            owner_telegram_id: req.user.telegram_id,
+            plan_id: freePlan._id,
+            status: 'active',
+          });
+          await WorkspaceMember.create({
+            workspace_id: newWs._id,
+            user_id: req.user._id,
+            user_telegram_id: req.user.telegram_id,
+            role: 'owner',
+            status: 'active',
+          });
+          workspaceId = newWs._id.toString();
+        }
+      }
+    }
 
     if (!workspaceId || !mongoose.Types.ObjectId.isValid(workspaceId)) {
       res.status(400).json({ error: 'Valid x-workspace-id header or workspaceId parameter required.' });

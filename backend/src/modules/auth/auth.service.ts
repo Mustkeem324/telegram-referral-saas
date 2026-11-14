@@ -134,7 +134,37 @@ export class AuthService {
       role: user.role,
     });
 
-    const primaryMember = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+    let primaryMember = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+    if (!primaryMember) {
+      const isSuper = user.role === 'superadmin' || telegramId === config.superAdmin.telegramId;
+      let ws =
+        (await Workspace.findOne({ owner_id: user._id })) ||
+        (isSuper ? await Workspace.findOne({ slug: 'superadmin-workspace' }) : null);
+
+      if (!ws) {
+        const plan =
+          (await SubscriptionPlan.findOne({ code: isSuper ? 'enterprise' : 'free' })) ||
+          (await SubscriptionPlan.findOne());
+        if (plan) {
+          ws = await Workspace.create({
+            name: `${user.first_name}'s Workspace`,
+            slug: `ws-${user.telegram_id}-${Date.now().toString(36)}`,
+            owner_id: user._id,
+            owner_telegram_id: user.telegram_id,
+            plan_id: plan._id,
+            status: 'active',
+          });
+        }
+      }
+
+      if (ws) {
+        primaryMember = await WorkspaceMember.findOneAndUpdate(
+          { workspace_id: ws._id, user_id: user._id },
+          { $set: { user_telegram_id: user.telegram_id, role: 'owner', status: 'active' } },
+          { upsert: true, new: true }
+        );
+      }
+    }
 
     session.authenticated = true;
     session.token = token;
@@ -239,7 +269,37 @@ export class AuthService {
       role: user.role,
     });
 
-    const primaryMember = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+    let primaryMember = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+    if (!primaryMember) {
+      const isSuper = user.role === 'superadmin' || telegramId === config.superAdmin.telegramId;
+      let ws =
+        (await Workspace.findOne({ owner_id: user._id })) ||
+        (isSuper ? await Workspace.findOne({ slug: 'superadmin-workspace' }) : null);
+
+      if (!ws) {
+        const plan =
+          (await SubscriptionPlan.findOne({ code: isSuper ? 'enterprise' : 'free' })) ||
+          (await SubscriptionPlan.findOne());
+        if (plan) {
+          ws = await Workspace.create({
+            name: `${user.first_name}'s Workspace`,
+            slug: `ws-${user.telegram_id}-${Date.now().toString(36)}`,
+            owner_id: user._id,
+            owner_telegram_id: user.telegram_id,
+            plan_id: plan._id,
+            status: 'active',
+          });
+        }
+      }
+
+      if (ws) {
+        primaryMember = await WorkspaceMember.findOneAndUpdate(
+          { workspace_id: ws._id, user_id: user._id },
+          { $set: { user_telegram_id: user.telegram_id, role: 'owner', status: 'active' } },
+          { upsert: true, new: true }
+        );
+      }
+    }
 
     return { user, token, workspaceId: primaryMember?.workspace_id?.toString() };
   }

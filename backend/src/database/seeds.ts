@@ -1,4 +1,4 @@
-import { SubscriptionPlan, User, Workspace } from './models';
+import { SubscriptionPlan, User, Workspace, WorkspaceMember, Subscription } from './models';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 
@@ -118,21 +118,38 @@ export async function seedInitialData(): Promise<void> {
     );
 
     // Ensure default workspace for superadmin
-    const freePlan = await SubscriptionPlan.findOne({ code: 'enterprise' });
-    if (freePlan) {
-      const existingWs = await Workspace.findOne({
+    const enterprisePlan = (await SubscriptionPlan.findOne({ code: 'enterprise' })) || (await SubscriptionPlan.findOne());
+    if (enterprisePlan) {
+      let ws = await Workspace.findOne({
         $or: [{ owner_id: adminUser._id }, { slug: 'superadmin-workspace' }],
       });
-      if (!existingWs) {
-        await Workspace.create({
+      if (!ws) {
+        ws = await Workspace.create({
           name: 'SuperAdmin Workspace',
           slug: 'superadmin-workspace',
           owner_id: adminUser._id,
           owner_telegram_id: adminUser.telegram_id,
-          plan_id: freePlan._id,
+          plan_id: enterprisePlan._id,
           status: 'active',
         });
+      } else if (String(ws.owner_id) !== String(adminUser._id)) {
+        ws.owner_id = adminUser._id;
+        ws.owner_telegram_id = adminUser.telegram_id;
+        ws.plan_id = enterprisePlan._id;
+        await ws.save();
       }
+
+      await WorkspaceMember.findOneAndUpdate(
+        { workspace_id: ws._id, user_id: adminUser._id },
+        {
+          $set: {
+            user_telegram_id: adminUser.telegram_id,
+            role: 'owner',
+            status: 'active',
+          },
+        },
+        { upsert: true }
+      );
     }
     logger.info('Superadmin initialized');
   }

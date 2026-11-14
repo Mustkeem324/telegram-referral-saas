@@ -19,6 +19,35 @@ export class TelegramService {
   private static bot: Telegraf | null = null;
 
   /**
+   * Escape HTML special characters for Telegram HTML mode
+   */
+  static escapeHtml(text: string): string {
+    if (!text) return '';
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  /**
+   * Safe reply helper: sends HTML formatted message with automatic plain-text fallback
+   */
+  static async safeReply(ctx: Context, htmlText: string, extra?: any): Promise<void> {
+    try {
+      await ctx.replyWithHTML(htmlText, extra);
+    } catch (err: any) {
+      logger.warn('HTML reply failed, falling back to plain text:', { error: err.message });
+      try {
+        const plain = htmlText.replace(/<[^>]*>?/gm, '');
+        await ctx.reply(plain, extra);
+      } catch (fallbackErr: any) {
+        logger.error('Safe reply plain text fallback also failed:', { error: fallbackErr.message });
+      }
+    }
+  }
+
+  /**
    * Safe button generator: returns web_app if HTTPS, or callback_data if HTTP/localhost
    */
   private static makeWebButton(text: string, path: string, fallbackCallback: string): any {
@@ -61,48 +90,69 @@ export class TelegramService {
 
         // Find or create user
         let user = await User.findOne({ telegram_id: telegramId });
-        let isNew = false;
         if (!user) {
-          isNew = true;
           user = await User.create({
             telegram_id: telegramId,
-            first_name: from.first_name,
+            first_name: from.first_name || 'Creator',
             last_name: from.last_name || '',
             username: from.username,
             role: telegramId === config.superAdmin.telegramId ? 'superadmin' : 'user',
             is_active: true,
           });
+        }
 
-          // Create workspace
-          const freePlan = await SubscriptionPlan.findOne({ code: 'free' });
-          if (freePlan) {
-            const workspace = await Workspace.create({
-              name: `${from.first_name}'s Workspace`,
-              slug: `ws-${telegramId}-${Date.now().toString(36)}`,
-              owner_id: user._id,
-              owner_telegram_id: telegramId,
-              plan_id: freePlan._id,
-              status: 'active',
-            });
+        // Ensure user has at least one active workspace
+        let member = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+        if (!member) {
+          const isSuper = user.role === 'superadmin' || telegramId === config.superAdmin.telegramId;
+          const plan =
+            (await SubscriptionPlan.findOne({ code: isSuper ? 'enterprise' : 'free' })) ||
+            (await SubscriptionPlan.findOne());
 
-            await WorkspaceMember.create({
-              workspace_id: workspace._id,
-              user_id: user._id,
-              user_telegram_id: telegramId,
-              role: 'owner',
-              status: 'active',
-            });
+          if (plan) {
+            let ws =
+              (await Workspace.findOne({ owner_id: user._id })) ||
+              (isSuper ? await Workspace.findOne({ slug: 'superadmin-workspace' }) : null);
+
+            if (!ws) {
+              ws = await Workspace.create({
+                name: `${from.first_name || 'Creator'}'s Workspace`,
+                slug: `ws-${telegramId}-${Date.now().toString(36)}`,
+                owner_id: user._id,
+                owner_telegram_id: telegramId,
+                plan_id: plan._id,
+                status: 'active',
+              });
+            }
+
+            member = await WorkspaceMember.findOneAndUpdate(
+              { workspace_id: ws._id, user_id: user._id },
+              {
+                $set: {
+                  user_telegram_id: telegramId,
+                  role: 'owner',
+                  status: 'active',
+                },
+              },
+              { upsert: true, new: true }
+            );
 
             const nextMonth = new Date();
             nextMonth.setMonth(nextMonth.getMonth() + 1);
-            await Subscription.create({
-              workspace_id: workspace._id,
-              plan_id: freePlan._id,
-              status: 'active',
-              current_period_start: new Date(),
-              current_period_end: nextMonth,
-              payment_provider: 'manual',
-            });
+            await Subscription.findOneAndUpdate(
+              { workspace_id: ws._id },
+              {
+                $setOnInsert: {
+                  workspace_id: ws._id,
+                  plan_id: plan._id,
+                  status: 'active',
+                  current_period_start: new Date(),
+                  current_period_end: nextMonth,
+                  payment_provider: 'manual',
+                },
+              },
+              { upsert: true }
+            );
           }
         }
 
@@ -117,9 +167,11 @@ export class TelegramService {
           });
 
           if (authenticated) {
-            await ctx.replyWithMarkdown(
-              `🔐 **Authentication Confirmed!**\n\n` +
-              `Welcome, **${from.first_name}**! You are now securely logged into **TeleGrowth SaaS**.\n\n` +
+            const firstName = TelegramService.escapeHtml(from.first_name || 'Creator');
+            await TelegramService.safeReply(
+              ctx,
+              `🔐 <b>Authentication Confirmed!</b>\n\n` +
+              `Welcome, <b>${firstName}</b>! You are now securely logged into <b>TeleGrowth SaaS</b>.\n\n` +
               `Your browser dashboard will update automatically, or visit: ${config.frontendUrl}/dashboard`
             );
             return;
@@ -131,25 +183,26 @@ export class TelegramService {
           const code = startPayload.replace('ref_', '');
           const refRecord = await ReferralCode.findOne({ referral_code: code });
           if (refRecord) {
-            // Record referral start click
             refRecord.clicks_count += 1;
             await refRecord.save();
 
             const campaign = await Campaign.findById(refRecord.campaign_id);
             if (campaign) {
-              const welcomeMsg = campaign.branding?.welcome_message ||
-                `🎉 Welcome to **${campaign.title}**!\n\nYou joined via an invitation. Make sure to stay in the channel to earn your rewards!`;
-              await ctx.replyWithMarkdown(welcomeMsg);
+              const welcomeMsg =
+                campaign.branding?.welcome_message ||
+                `🎉 Welcome to <b>${TelegramService.escapeHtml(campaign.title)}</b>!\n\nYou joined via an invitation. Make sure to stay in the channel to earn your rewards!`;
+              await TelegramService.safeReply(ctx, welcomeMsg);
             }
           }
         }
 
         const dashboardUrl = `${config.frontendUrl}/dashboard`;
+        const firstName = TelegramService.escapeHtml(from.first_name || 'Creator');
         const welcomeText =
-          `👋 Welcome to **TeleGrowth SaaS**, ${from.first_name}!\n\n` +
+          `👋 Welcome to <b>TeleGrowth SaaS</b>, ${firstName}!\n\n` +
           `🚀 Supercharge your channels & groups with viral growth campaigns, referral milestones, automated rewards, and provably-fair giveaways.\n\n` +
-          `🖥 **Web Dashboard:** ${dashboardUrl}\n\n` +
-          `**Available Commands:**\n` +
+          `🖥 <b>Web Dashboard:</b> ${dashboardUrl}\n\n` +
+          `<b>Available Commands:</b>\n` +
           `• /dashboard — Access your management dashboard\n` +
           `• /campaigns — List and view your active campaigns\n` +
           `• /create — Launch a new referral or giveaway campaign\n` +
@@ -161,7 +214,7 @@ export class TelegramService {
 
         const dashBtn = this.makeWebButton('📊 Open Web Dashboard', '/dashboard', 'cmd_open_dashboard');
 
-        await ctx.replyWithMarkdown(welcomeText, {
+        await TelegramService.safeReply(ctx, welcomeText, {
           reply_markup: {
             inline_keyboard: [
               [dashBtn],
@@ -173,8 +226,12 @@ export class TelegramService {
           },
         });
       } catch (err: any) {
-        logger.error('Error handling /start:', { error: err.message });
-        await ctx.reply('An error occurred during onboarding. Please try again.');
+        logger.error('Error handling /start:', { error: err.message, stack: err.stack });
+        try {
+          await ctx.reply(`👋 Welcome to TeleGrowth SaaS! Open your dashboard at: ${config.frontendUrl}/dashboard`);
+        } catch (fallbackErr) {
+          logger.error('Fallback reply failed:', fallbackErr);
+        }
       }
     });
 
@@ -182,8 +239,9 @@ export class TelegramService {
     bot.command('dashboard', async (ctx) => {
       const url = `${config.frontendUrl}/dashboard`;
       const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
-      await ctx.replyWithMarkdown(
-        `🖥 **Creator Dashboard**\n\nLink: ${url}\n\nClick below to launch:`,
+      await TelegramService.safeReply(
+        ctx,
+        `🖥 <b>Creator Dashboard</b>\n\nLink: ${url}\n\nClick below to launch:`,
         {
           reply_markup: {
             inline_keyboard: [[dashBtn]],
@@ -199,25 +257,26 @@ export class TelegramService {
       if (!user) return ctx.reply('Please run /start first to register.');
 
       const member = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
-      if (!member) return ctx.reply('No active workspace found.');
+      if (!member) return ctx.reply('No active workspace found. Run /start to initialize.');
 
       const campaigns = await Campaign.find({ workspace_id: member.workspace_id }).limit(10);
       if (campaigns.length === 0) {
-        return ctx.replyWithMarkdown(
+        return TelegramService.safeReply(
+          ctx,
           `You have no campaigns yet.\nUse /create or open the dashboard (${config.frontendUrl}/campaigns/new) to launch your first viral campaign!`
         );
       }
 
-      let text = `📋 **Your Campaigns:**\n\n`;
+      let text = `📋 <b>Your Campaigns:</b>\n\n`;
       campaigns.forEach((c, idx) => {
-        text += `${idx + 1}. **${c.title}**\n` +
-                `   • Status: \`${c.status.toUpperCase()}\`\n` +
+        text += `${idx + 1}. <b>${TelegramService.escapeHtml(c.title)}</b>\n` +
+                `   • Status: <code>${c.status.toUpperCase()}</code>\n` +
                 `   • Type: ${c.type}\n` +
                 `   • Total Referrals: ${c.total_referrals} (${c.verified_referrals} verified)\n\n`;
       });
 
-      const analyticsBtn = this.makeWebButton('📊 Full Analytics', '/analytics', 'cmd_view_analytics');
-      await ctx.replyWithMarkdown(text, {
+      const analyticsBtn = this.makeWebButton('📊 Full Analytics', '/dashboard', 'cmd_view_analytics');
+      await TelegramService.safeReply(ctx, text, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '➕ New Campaign', callback_data: 'cmd_create_campaign' }],
@@ -231,8 +290,9 @@ export class TelegramService {
     bot.command('create', async (ctx) => {
       const url = `${config.frontendUrl}/campaigns/new`;
       const createBtn = this.makeWebButton('✨ Launch Creator Studio', '/campaigns/new', 'cmd_create_campaign');
-      await ctx.replyWithMarkdown(
-        `🛠 **Launch a New Campaign**\n\nLink: ${url}\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, open Creator Studio:`,
+      await TelegramService.safeReply(
+        ctx,
+        `🛠 <b>Launch a New Campaign</b>\n\nLink: ${url}\n\nTo configure multi-channel requirements, milestone rewards, and giveaway rules, open Creator Studio:`,
         {
           reply_markup: {
             inline_keyboard: [[createBtn]],
@@ -252,17 +312,17 @@ export class TelegramService {
       const plan: any = ws?.plan_id;
 
       const text =
-        `💳 **Subscription Overview**\n\n` +
-        `• Current Plan: **${plan?.name || 'Free'}**\n` +
-        `• Active Campaigns Limit: **${plan?.max_active_campaigns || 1}**\n` +
-        `• Connected Chats Limit: **${plan?.max_connected_chats || 1}**\n` +
-        `• Monthly Verified Referrals: **${plan?.max_verified_referrals_monthly?.toLocaleString() || 100}**\n` +
-        `• Anti-Fraud Tier: **${plan?.features?.anti_fraud_tier || 'basic'}**\n\n` +
+        `💳 <b>Subscription Overview</b>\n\n` +
+        `• Current Plan: <b>${plan?.name || 'Free'}</b>\n` +
+        `• Active Campaigns Limit: <b>${plan?.max_active_campaigns || 1}</b>\n` +
+        `• Connected Chats Limit: <b>${plan?.max_connected_chats || 1}</b>\n` +
+        `• Monthly Verified Referrals: <b>${plan?.max_verified_referrals_monthly?.toLocaleString() || 100}</b>\n` +
+        `• Anti-Fraud Tier: <b>${plan?.features?.anti_fraud_tier || 'basic'}</b>\n\n` +
         `Portal: ${config.frontendUrl}/billing\n\n` +
         `Upgrade anytime using Telegram Stars ⭐ or Card!`;
 
       const billingBtn = this.makeWebButton('🌐 View Billing Portal', '/billing', 'cmd_view_billing');
-      await ctx.replyWithMarkdown(text, {
+      await TelegramService.safeReply(ctx, text, {
         reply_markup: {
           inline_keyboard: [
             [{ text: '⭐ Upgrade with Stars', callback_data: 'cmd_upgrade_stars' }],
@@ -274,10 +334,11 @@ export class TelegramService {
 
     // /analytics
     bot.command('analytics', async (ctx) => {
-      const url = `${config.frontendUrl}/analytics`;
-      const analyticsBtn = this.makeWebButton('📊 View Analytics', '/analytics', 'cmd_view_analytics');
-      await ctx.replyWithMarkdown(
-        `📈 **Live Campaign Analytics**\n\nLink: ${url}\n\nView real-time join charts, conversion rates, and top referrers:`,
+      const url = `${config.frontendUrl}/dashboard`;
+      const analyticsBtn = this.makeWebButton('📊 View Analytics', '/dashboard', 'cmd_view_analytics');
+      await TelegramService.safeReply(
+        ctx,
+        `📈 <b>Live Campaign Analytics</b>\n\nLink: ${url}\n\nView real-time join charts, conversion rates, and top referrers:`,
         {
           reply_markup: {
             inline_keyboard: [[analyticsBtn]],
@@ -289,22 +350,23 @@ export class TelegramService {
     // /help
     bot.command('help', async (ctx) => {
       const text =
-        `📖 **How to Connect Your Telegram Channel or Group:**\n\n` +
+        `📖 <b>How to Connect Your Telegram Channel or Group:</b>\n\n` +
         `1. Open your Channel or Group settings in Telegram.\n` +
-        `2. Go to **Administrators** > **Add Admin**.\n` +
+        `2. Go to <b>Administrators</b> > <b>Add Admin</b>.\n` +
         `3. Search for @${config.telegram.botUsername} and add it.\n` +
-        `4. Ensure the **"Invite Users via Link"** permission is **ENABLED**.\n` +
-        `5. Open your Dashboard (${config.frontendUrl}/channels), navigate to **Connected Chats**, and click **Verify Connection**.\n\n` +
-        `💡 *Why is invite permission required?*\n` +
+        `4. Ensure the <b>"Invite Users via Link"</b> permission is <b>ENABLED</b>.\n` +
+        `5. Open your Dashboard (${config.frontendUrl}/channels), navigate to <b>Connected Chats</b>, and click <b>Verify Connection</b>.\n\n` +
+        `💡 <i>Why is invite permission required?</i>\n` +
         `The platform generates unique invite links for every participant so that each member's referrals are tracked 100% accurately without spoofing.`;
 
-      await ctx.replyWithMarkdown(text);
+      await TelegramService.safeReply(ctx, text);
     });
 
     // /support & /paysupport
     bot.command(['support', 'paysupport'], async (ctx) => {
       const tgId = String(ctx.from?.id);
-      const isPay = ctx.message.text.includes('paysupport');
+      const msgText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+      const isPay = msgText.includes('paysupport');
       const category = isPay ? 'payment' : 'general';
 
       await SupportTicket.create({
@@ -316,13 +378,14 @@ export class TelegramService {
           {
             sender_telegram_id: tgId,
             sender_role: 'user',
-            message: `User requested support via Telegram bot command ${ctx.message.text}`,
+            message: `User requested support via Telegram bot command ${msgText}`,
             timestamp: new Date(),
           },
         ],
       });
 
-      await ctx.replyWithMarkdown(
+      await TelegramService.safeReply(
+        ctx,
         `✅ Support ticket created!\nOur support engineers have received your inquiry and will contact you directly here on Telegram.`
       );
     });
@@ -330,39 +393,44 @@ export class TelegramService {
     // Callback queries
     bot.action('cmd_open_dashboard', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.replyWithMarkdown(
-        `🖥 **Creator Dashboard**\n\nAccess your dashboard here:\n${config.frontendUrl}/dashboard`
+      await TelegramService.safeReply(
+        ctx,
+        `🖥 <b>Creator Dashboard</b>\n\nAccess your dashboard here:\n${config.frontendUrl}/dashboard`
       );
     });
 
     bot.action('cmd_view_analytics', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.replyWithMarkdown(
-        `📈 **Live Campaign Analytics:**\n${config.frontendUrl}/analytics`
+      await TelegramService.safeReply(
+        ctx,
+        `📈 <b>Live Campaign Analytics:</b>\n${config.frontendUrl}/dashboard`
       );
     });
 
     bot.action('cmd_view_billing', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.replyWithMarkdown(
-        `💳 **Billing & Subscriptions Portal:**\n${config.frontendUrl}/billing`
+      await TelegramService.safeReply(
+        ctx,
+        `💳 <b>Billing & Subscriptions Portal:</b>\n${config.frontendUrl}/billing`
       );
     });
 
     bot.action('cmd_create_campaign', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.replyWithMarkdown(
-        `🛠 **Launch Campaign Studio**\n\nConfigure viral rules and milestone rewards here:\n${config.frontendUrl}/campaigns/new`
+      await TelegramService.safeReply(
+        ctx,
+        `🛠 <b>Launch Campaign Studio</b>\n\nConfigure viral rules and milestone rewards here:\n${config.frontendUrl}/campaigns/new`
       );
     });
 
     bot.action('cmd_upgrade_stars', async (ctx) => {
       await ctx.answerCbQuery();
-      await ctx.replyWithMarkdown(
-        `⭐ **Upgrade with Telegram Stars**\n\n` +
+      await TelegramService.safeReply(
+        ctx,
+        `⭐ <b>Upgrade with Telegram Stars</b>\n\n` +
         `Choose your tier to purchase directly inside Telegram:\n` +
-        `• **Pro Plan**: 1,500 Stars / month (10 campaigns, 5k referrals)\n` +
-        `• **Business Plan**: 5,000 Stars / month (50 campaigns, 50k referrals)\n\n` +
+        `• <b>Pro Plan</b>: 1,500 Stars / month (10 campaigns, 5k referrals)\n` +
+        `• <b>Business Plan</b>: 5,000 Stars / month (50 campaigns, 50k referrals)\n\n` +
         `Checkout Portal: ${config.frontendUrl}/billing`
       );
     });
