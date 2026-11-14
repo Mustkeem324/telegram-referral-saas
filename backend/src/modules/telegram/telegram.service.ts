@@ -566,7 +566,7 @@ export class TelegramService {
       );
     });
 
-    bot.action('cb_guide_main', async (ctx) => {
+    bot.action(['cb_guide_main', 'cb_how_it_works'], async (ctx) => {
       await ctx.answerCbQuery();
       await TelegramService.sendHowItWorksOverview(ctx);
     });
@@ -1035,54 +1035,97 @@ export class TelegramService {
       const activeBotUsername = (ctx as any).customBotUsername || ctx.botInfo?.username || config.telegram.botUsername;
       const botDeepLink = `https://t.me/${activeBotUsername}?start=ref_${referralCode}`;
 
-      const shareText = encodeURIComponent(`Join ${campaign.title} via my exclusive referral link: ${botDeepLink}`);
+      const shareText = encodeURIComponent(`👋 Hey! Join ${campaign.title} on Telegram:\n${botDeepLink}`);
       const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(botDeepLink)}&text=${shareText}`;
 
-      const shareChannelText = encodeURIComponent(`Join ${campaign.title} channel via my invite link: ${inviteLink}`);
+      const shareChannelText = encodeURIComponent(`👋 Hey! Join ${campaign.title} channel directly:\n${inviteLink}`);
       const shareChannelUrl = `https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${shareChannelText}`;
 
       const basePoints = campaign.reward_policy?.points_per_referral || 10;
       const premiumMult = campaign.reward_policy?.premium_multiplier || 2;
       const premiumPoints = Math.round(basePoints * premiumMult);
 
-      const premiumBoosterNotice = premiumMult > 1
-        ? `⭐ <b>Telegram Premium Booster:</b> Earn <b>${premiumMult}x (+${premiumPoints} pts)</b> for inviting Telegram Premium members!\n`
+      const premiumBadge = premiumMult > 1
+        ? `⭐ <b>Telegram Premium Bonus:</b> <b>+${premiumPoints} Points</b> (${premiumMult}x multiplier!)\n`
         : '';
 
       const text =
-        `🔗 <b>Your Exclusive Referral Links:</b>\n\n` +
-        `Campaign: <b>${this.escapeHtml(campaign.title)}</b>\n` +
-        `Standard Reward: <b>+${basePoints} Points</b> per verified join\n` +
-        premiumBoosterNotice +
-        `\n🤖 <b>1. Bot Referral Link (Recommended):</b>\n` +
+        `🎁 <b>Your Personal Referral Invite Links</b>\n\n` +
+        `Campaign: <b>${this.escapeHtml(campaign.title)}</b>\n\n` +
+        `💰 <b>Rewards You Earn:</b>\n` +
+        `• Standard Member: <b>+${basePoints} Points</b>\n` +
+        premiumBadge +
+        `\n━━━━━━━━━━━━━━━━━━━━\n` +
+        `🤖 <b>Option 1: One-Tap Bot Invite (Recommended)</b>\n` +
         `<code>${botDeepLink}</code>\n` +
-        `<i>👉 When friends tap this, they start the bot and join with automatic attribution.</i>\n\n` +
-        `📢 <b>2. Direct Channel Invite Link:</b>\n` +
+        `<i>👉 Best for friends! They tap start, get welcomed, and join seamlessly.</i>\n\n` +
+        `📢 <b>Option 2: Direct Channel Link</b>\n` +
         `<code>${inviteLink}</code>\n` +
-        `<i>👉 Cryptographically tracked Telegram channel invite link.</i>\n\n` +
-        `💡 <i>Both links are 100% unique to your account (ID: <code>${tgId}</code>). Every joining member is verified and credited to you!</i>`;
+        `<i>👉 Direct link straight into the Telegram channel.</i>\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n\n` +
+        `📌 <b>Simple 3-Step Guide:</b>\n` +
+        `1️⃣ Tap <b>"🚀 Share with Friends"</b> below.\n` +
+        `2️⃣ Pick any friend or Telegram group.\n` +
+        `3️⃣ When they join, your points are automatically credited!`;
 
       await this.safeReply(ctx, text, {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: '🚀 Share Bot Link', url: shareUrl },
+              { text: '🚀 Share with Friends', url: shareUrl },
               { text: '📢 Share Channel Link', url: shareChannelUrl },
             ],
             [
-              { text: '🔄 Regenerate Fresh Link', callback_data: 'cb_refresh_link' },
-              { text: '📊 My Stats', callback_data: 'cb_my_stats' },
+              { text: '📊 My Stats & Points', callback_data: 'cb_my_stats' },
+              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
             ],
             [
-              { text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' },
+              { text: '❓ How It Works', callback_data: 'cb_how_it_works' },
+              { text: '🔄 Refresh Link', callback_data: 'cb_refresh_link' },
+            ],
+            [
               { text: '◀️ Main Menu', callback_data: 'cb_menu' },
             ],
           ],
         },
       });
     } catch (err: any) {
-      logger.error('Error generating invite link in bot:', { error: err.message });
-      await this.safeReply(ctx, `⚠️ Could not generate invite link at this moment: ${err.message}`);
+      logger.error('Error generating invite link in bot:', { error: err.message, stack: err.stack });
+
+      // Graceful fallback: check if user already has an existing referral code/link
+      try {
+        const tgId = String(ctx.from?.id);
+        const { ReferralCode } = await import('../../database/models/ReferralCode');
+        const existingRef = await ReferralCode.findOne({ user_telegram_id: tgId });
+        if (existingRef) {
+          const activeBotUsername = (ctx as any).customBotUsername || ctx.botInfo?.username || config.telegram.botUsername;
+          const fallbackBotLink = `https://t.me/${activeBotUsername}?start=ref_${existingRef.referral_code}`;
+          const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(fallbackBotLink)}&text=${encodeURIComponent('Join with my referral link!')}`;
+          await this.safeReply(
+            ctx,
+            `⚠️ <b>Note:</b> We couldn't refresh a new channel link right now, but your active Bot Referral Link is ready:\n\n` +
+            `<code>${fallbackBotLink}</code>\n\n` +
+            `You can share this link immediately to earn points!`,
+            {
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🚀 Share Link', url: shareUrl }],
+                  [{ text: '📊 My Stats', callback_data: 'cb_my_stats' }],
+                  [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+                ],
+              },
+            }
+          );
+          return;
+        }
+      } catch (fallbackErr: any) {
+        logger.error('Fallback link error:', { error: fallbackErr.message });
+      }
+
+      await this.safeReply(
+        ctx,
+        `⚠️ <b>Unable to generate invite link at this moment.</b>\n\nPlease try again in a few moments, or use /stats to check your account.`
+      );
     }
   }
 

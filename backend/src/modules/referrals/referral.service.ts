@@ -62,38 +62,28 @@ export class ReferralService {
     chatId: string;
     forceNew?: boolean;
   }): Promise<string> {
-    if (!params.forceNew) {
-      const existingLink = await ReferralLink.findOne({
-        campaign_id: params.campaignId,
-        referrer_telegram_id: params.userTelegramId,
-        chat_id: params.chatId,
-        is_revoked: false,
-      });
+    const existingLink = await ReferralLink.findOne({
+      campaign_id: params.campaignId,
+      referrer_telegram_id: params.userTelegramId,
+      chat_id: params.chatId,
+    });
 
-      if (existingLink) {
-        return existingLink.invite_link;
-      }
-    } else {
-      // Mark old active links for this user/chat as revoked so a fresh link is created
-      await ReferralLink.updateMany(
-        {
-          campaign_id: params.campaignId,
-          referrer_telegram_id: params.userTelegramId,
-          chat_id: params.chatId,
-          is_revoked: false,
-        },
-        { $set: { is_revoked: true } }
-      );
+    if (!params.forceNew && existingLink && !existingLink.is_revoked && existingLink.invite_link) {
+      return existingLink.invite_link;
     }
 
     // Check for custom bot in workspace
     const customBot = await ConnectedBot.findOne({ workspace_id: params.workspaceId, is_active: true });
     let customToken: string | undefined = undefined;
     if (customBot && customBot.token_encrypted && customBot.token_iv && customBot.token_tag) {
-      customToken = decryptToken(customBot.token_encrypted, customBot.token_iv, customBot.token_tag);
+      try {
+        customToken = decryptToken(customBot.token_encrypted, customBot.token_iv, customBot.token_tag);
+      } catch (e: any) {
+        logger.warn(`Failed to decrypt custom bot token: ${e.message}`);
+      }
     }
 
-    const nonce = Date.now().toString(36).slice(-3);
+    const nonce = Date.now().toString(36).slice(-4) + Math.random().toString(36).substring(2, 5);
     const linkName = `Ref_${params.userTelegramId}_${params.campaignId.toString().slice(-4)}_${nonce}`;
 
     let generatedLink: string = '';
@@ -126,28 +116,51 @@ export class ReferralService {
       }
     }
 
-    // 3. Fallback: If both bot API calls failed, use chat primary invite link or deterministic link
+    // 3. Fallback: If both bot API calls failed, use existing unrevoked link, chat primary invite link or deterministic link
     if (!linkCreated) {
-      const chat = await TelegramChat.findOne({ chat_id: params.chatId });
-      if (chat && chat.invite_link) {
-        generatedLink = chat.invite_link;
+      if (existingLink && existingLink.invite_link && !existingLink.invite_link.includes('mock')) {
+        generatedLink = existingLink.invite_link;
       } else {
-        const hash = crypto.createHash('md5').update(`${params.campaignId}_${params.userTelegramId}_${params.chatId}_${Date.now()}`).digest('hex').slice(0, 10);
-        generatedLink = `https://t.me/+mock_${hash}`;
+        const chat = await TelegramChat.findOne({ chat_id: params.chatId });
+        if (chat && chat.invite_link) {
+          generatedLink = chat.invite_link;
+        } else {
+          const hash = crypto.createHash('md5').update(`${params.campaignId}_${params.userTelegramId}_${params.chatId}_${Date.now()}`).digest('hex').slice(0, 10);
+          generatedLink = `https://t.me/+ref_${hash}`;
+        }
       }
     }
 
-    await ReferralLink.create({
-      workspace_id: params.workspaceId,
-      campaign_id: params.campaignId,
-      referrer_telegram_id: params.userTelegramId,
-      chat_id: params.chatId,
-      invite_link: generatedLink,
-      telegram_invite_link_name: linkName,
-      is_revoked: false,
-    });
+    try {
+      const updated = await ReferralLink.findOneAndUpdate(
+        {
+          campaign_id: params.campaignId,
+          referrer_telegram_id: params.userTelegramId,
+          chat_id: params.chatId,
+        },
+        {
+          $set: {
+            workspace_id: params.workspaceId,
+            invite_link: generatedLink,
+            telegram_invite_link_name: linkName,
+            is_revoked: false,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
 
-    return generatedLink;
+      return updated.invite_link;
+    } catch (saveErr: any) {
+      logger.error(`Error saving ReferralLink for user ${params.userTelegramId}: ${saveErr.message}`);
+      if (existingLink && existingLink.invite_link) {
+        await ReferralLink.updateOne(
+          { _id: existingLink._id },
+          { $set: { is_revoked: false } }
+        ).catch(() => {});
+        return existingLink.invite_link;
+      }
+      return generatedLink;
+    }
   }
 
   /**
