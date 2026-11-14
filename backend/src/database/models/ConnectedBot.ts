@@ -11,7 +11,7 @@ export interface IConnectedBot extends Document {
   token_tag?: string;
   webhook_secret: string;
   is_active: boolean;
-  health_status: 'healthy' | 'degraded' | 'failing';
+  health_status: 'healthy' | 'degraded' | 'failing' | 'stopped' | 'error';
   last_health_check_at?: Date;
   error_message?: string;
   created_at: Date;
@@ -30,7 +30,7 @@ const ConnectedBotSchema = new Schema<IConnectedBot>(
     token_tag: { type: String },
     webhook_secret: { type: String, required: true },
     is_active: { type: Boolean, default: true, index: true },
-    health_status: { type: String, enum: ['healthy', 'degraded', 'failing'], default: 'healthy' },
+    health_status: { type: String, enum: ['healthy', 'degraded', 'failing', 'stopped', 'error'], default: 'healthy' },
     last_health_check_at: { type: Date },
     error_message: { type: String },
   },

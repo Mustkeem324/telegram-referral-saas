@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '../lib/AuthContext';
 import { useTheme } from '../lib/ThemeContext';
+import { api } from '../lib/api';
 import {
   LayoutDashboard,
   Megaphone,
@@ -32,6 +33,15 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user, workspaces, activeWorkspace, switchWorkspace } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const [customBot, setCustomBot] = React.useState<{ connected: boolean; bot?: any } | null>(null);
+
+  React.useEffect(() => {
+    if (activeWorkspace) {
+      api.getCustomBot(activeWorkspace._id)
+        .then((data: any) => setCustomBot(data))
+        .catch(() => setCustomBot(null));
+    }
+  }, [activeWorkspace]);
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -163,7 +173,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         </button>
       </div>
 
-      {/* Central Bot Status Card */}
+      {/* Telegram Bot Status Card (Custom Creator Bot or Central Bot) */}
       <div className="p-3.5 border-t border-slate-200 dark:border-navy-700/80 bg-slate-50/80 dark:bg-navy-900/60">
         <div className="bg-white dark:bg-navy-800/90 border border-slate-200 dark:border-navy-700/80 rounded-2xl p-3 shadow-card">
           <div className="flex items-center justify-between mb-1.5">
@@ -172,48 +182,26 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-successGreen opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-successGreen"></span>
               </span>
-              Central Bot Live
+              {customBot?.connected && customBot.bot?.bot_username ? 'Custom Bot Live' : 'Central Bot Live'}
             </span>
             <span className="text-[10px] font-mono text-cyan-700 dark:text-cyanAccent bg-cyan-50 dark:bg-cyanAccent/10 px-1.5 py-0.5 rounded border border-cyan-200 dark:border-cyanAccent/20">
-              Online
+              {customBot?.connected ? 'Daemon' : 'Online'}
             </span>
           </div>
           <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">
-            @TeleGrowthnxbot listening for invites & joins
+            {customBot?.connected && customBot.bot?.bot_username
+              ? `@${customBot.bot.bot_username} listening for invites & joins`
+              : '@TeleGrowthnxbot listening for invites & joins'}
           </p>
           <a
-            href="https://t.me/TeleGrowthnxbot"
+            href={
+              customBot?.connected && customBot.bot?.bot_username
+                ? `https://t.me/${customBot.bot.bot_username}`
+                : 'https://t.me/TeleGrowthnxbot'
+            }
             target="_blank"
             rel="noreferrer"
             className="mt-2.5 text-[11px] text-electric hover:text-electric-hover flex items-center justify-between font-semibold pt-1 border-t border-slate-200 dark:border-navy-700/60 transition-colors"
-          >
-            <span>Open in Telegram</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        </div>
-      </div>
-      <div className="p-3.5 border-t border-navy-700/80 bg-navy-900/60">
-        <div className="bg-navy-800/90 border border-navy-700/80 rounded-2xl p-3 shadow-card">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-successGreen opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-successGreen"></span>
-              </span>
-              Central Bot Live
-            </span>
-            <span className="text-[10px] font-mono text-cyanAccent bg-cyanAccent/10 px-1.5 py-0.5 rounded border border-cyanAccent/20">
-              Online
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 leading-snug">
-            @TeleGrowthnxbot listening for invites & joins
-          </p>
-          <a
-            href="https://t.me/TeleGrowthnxbot"
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2.5 text-[11px] text-electric hover:text-electric-light flex items-center justify-between font-semibold pt-1 border-t border-navy-700/60 transition-colors"
           >
             <span>Open in Telegram</span>
             <ExternalLink className="w-3 h-3" />

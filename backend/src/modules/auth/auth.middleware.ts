@@ -60,9 +60,10 @@ export function requireWorkspace(minRole: WorkspaceRole = 'viewer') {
     }
 
     let workspaceId =
+      (req.params?.workspaceId as string) ||
       (req.headers['x-workspace-id'] as string) ||
       (req.query.workspaceId as string) ||
-      req.body.workspace_id;
+      req.body?.workspace_id;
 
     // Auto-resolve workspace if not provided in header
     if (!workspaceId || !mongoose.Types.ObjectId.isValid(workspaceId)) {

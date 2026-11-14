@@ -11,6 +11,7 @@ import {
   AuditLog,
 } from '../../database/models';
 import { TelegramService } from '../telegram/telegram.service';
+import { CustomBotManager } from '../telegram/custom-bot.manager';
 import { encryptToken } from '../../utils/crypto';
 import crypto from 'crypto';
 
@@ -224,7 +225,36 @@ router.post('/:workspaceId/chats/verify', requireAuth, requireWorkspace('admin')
   }
 });
 
-// Custom bot connection (encrypted storage)
+// Get custom bot status
+router.get('/:workspaceId/custom-bot', requireAuth, requireWorkspace('viewer'), async (req, res) => {
+  try {
+    const wsId = String(req.workspace!._id);
+    const bot = await ConnectedBot.findOne({ workspace_id: req.workspace!._id });
+    if (!bot) {
+      return res.json({ connected: false });
+    }
+
+    const isRunning = CustomBotManager.isBotRunning(wsId);
+    res.json({
+      connected: true,
+      bot: {
+        bot_id: bot.bot_id,
+        bot_username: bot.bot_username,
+        first_name: bot.first_name,
+        is_active: bot.is_active,
+        health_status: isRunning ? 'healthy' : (bot.health_status || 'stopped'),
+        last_health_check_at: bot.last_health_check_at,
+        is_running: isRunning,
+        has_token: Boolean(bot.token_encrypted),
+        error_message: bot.error_message || null,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Custom bot connection (encrypted storage + instant launch)
 router.post('/:workspaceId/custom-bot', requireAuth, requireWorkspace('admin'), async (req, res) => {
   try {
     const { token } = req.body;
@@ -235,9 +265,10 @@ router.post('/:workspaceId/custom-bot', requireAuth, requireWorkspace('admin'), 
     const botInfo = await TelegramService.verifyCustomBotToken(token);
     const { encrypted, iv, tag } = encryptToken(token);
     const webhookSecret = crypto.randomBytes(24).toString('hex');
+    const wsId = String(req.workspace!._id);
 
     const connectedBot = await ConnectedBot.findOneAndUpdate(
-      { workspace_id: req.workspace!._id },
+      { workspace_id: wsId },
       {
         $set: {
           bot_id: botInfo.botId,
@@ -251,10 +282,14 @@ router.post('/:workspaceId/custom-bot', requireAuth, requireWorkspace('admin'), 
           is_active: true,
           health_status: 'healthy',
           last_health_check_at: new Date(),
+          error_message: null,
         },
       },
       { upsert: true, new: true }
     );
+
+    // Launch Telegraf polling daemon immediately in background
+    const startResult = await CustomBotManager.startCustomBot(wsId, token);
 
     res.json({
       success: true,
@@ -262,11 +297,40 @@ router.post('/:workspaceId/custom-bot', requireAuth, requireWorkspace('admin'), 
         bot_id: connectedBot.bot_id,
         bot_username: connectedBot.bot_username,
         first_name: connectedBot.first_name,
-        health_status: connectedBot.health_status,
+        health_status: startResult.success ? 'healthy' : 'error',
+        is_running: startResult.success,
+        error_message: startResult.error || null,
       },
     });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// Ping & diagnose custom bot health
+router.post('/:workspaceId/custom-bot/test', requireAuth, requireWorkspace('admin'), async (req, res) => {
+  try {
+    const wsId = String(req.workspace!._id);
+    const testResult = await CustomBotManager.pingCustomBot(wsId);
+    res.json(testResult);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Disconnect & stop custom bot
+router.delete('/:workspaceId/custom-bot', requireAuth, requireWorkspace('admin'), async (req, res) => {
+  try {
+    const wsId = String(req.workspace!._id);
+    await CustomBotManager.stopCustomBot(wsId);
+    await ConnectedBot.findOneAndDelete({ workspace_id: wsId });
+
+    res.json({
+      success: true,
+      message: 'Custom bot disconnected and stopped successfully.',
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

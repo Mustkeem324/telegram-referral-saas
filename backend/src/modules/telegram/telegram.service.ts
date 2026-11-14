@@ -83,15 +83,16 @@ export class TelegramService {
           { text: '🛡️ Anti-Fraud Rules', callback_data: 'cb_rules' },
         ],
         [
+          { text: '🤖 Custom Bot Manager', callback_data: 'cb_custom_bot' },
           { text: '📢 Add Bot to Channel', callback_data: 'cb_channels' },
-          { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
         ],
         [
-          dashBtn,
+          { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
           { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
         ],
         [
-          { text: '❓ Frequently Asked Questions', callback_data: 'cb_faq' },
+          dashBtn,
+          { text: '❓ FAQ & Guides', callback_data: 'cb_faq' },
         ],
       ],
     };
@@ -111,7 +112,7 @@ export class TelegramService {
   /**
    * Register all command handlers & interactive flows
    */
-  private static setupBotHandlers(bot: Telegraf): void {
+  static setupBotHandlers(bot: Telegraf): void {
     // Error handler
     bot.catch((err: any, ctx: Context) => {
       logger.error(`Telegram Bot Error for ${ctx.updateType}:`, { error: err.message });
@@ -303,6 +304,21 @@ export class TelegramService {
     // /faq
     bot.command('faq', async (ctx) => {
       await TelegramService.sendFAQ(ctx);
+    });
+
+    // /custombot & /bot & /mybot
+    bot.command(['custombot', 'bot', 'mybot'], async (ctx) => {
+      await TelegramService.sendCustomBotManager(ctx);
+    });
+
+    // /setcustombot & /connectbot
+    bot.command(['setcustombot', 'connectbot'], async (ctx) => {
+      await TelegramService.handleSetCustomBot(ctx);
+    });
+
+    // /disconnectbot & /disconnectcustombot
+    bot.command(['disconnectbot', 'disconnectcustombot'], async (ctx) => {
+      await TelegramService.handleDisconnectCustomBot(ctx);
     });
 
     // /dashboard
@@ -570,6 +586,26 @@ export class TelegramService {
       await TelegramService.sendFAQ(ctx);
     });
 
+    bot.action('cb_custom_bot', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.sendCustomBotManager(ctx);
+    });
+
+    bot.action('cb_custom_bot_ping', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.handleCustomBotPingAction(ctx);
+    });
+
+    bot.action('cb_custom_bot_restart', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.handleCustomBotRestartAction(ctx);
+    });
+
+    bot.action('cb_custom_bot_disconnect', async (ctx) => {
+      await ctx.answerCbQuery();
+      await TelegramService.handleDisconnectCustomBot(ctx);
+    });
+
     bot.action('cmd_open_dashboard', async (ctx) => {
       await ctx.answerCbQuery();
       await TelegramService.safeReply(
@@ -631,10 +667,12 @@ export class TelegramService {
           const fromTgId = String(fromUser.id);
           const user = await User.findOne({ telegram_id: fromTgId });
           const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+          const customWsId = (ctx as any).workspaceId;
+          const targetWsId = customWsId || member?.workspace_id;
 
-          if (member) {
+          if (targetWsId) {
             await TelegramChat.findOneAndUpdate(
-              { workspace_id: member.workspace_id, chat_id: String(chat.id) },
+              { workspace_id: targetWsId, chat_id: String(chat.id) },
               {
                 $set: {
                   title: chat.title || 'Telegram Chat',
@@ -648,14 +686,14 @@ export class TelegramService {
                     can_delete_messages: Boolean(adminMember.can_delete_messages),
                   },
                   verification_status: canInvite ? 'verified' : 'permissions_missing',
-                  connected_by: user!._id,
+                  connected_by: user ? user._id : undefined,
                   last_verified_at: new Date(),
                 },
               },
               { upsert: true, new: true }
             );
 
-            logger.info(`Chat ${chat.id} verified for workspace ${member.workspace_id}`);
+            logger.info(`Chat ${chat.id} verified for workspace ${targetWsId}`);
           }
         }
       } catch (err: any) {
@@ -892,13 +930,18 @@ export class TelegramService {
       const tgId = String(ctx.from?.id);
       if (!tgId) return;
 
-      // Find active campaign: first check user's workspace, else any active public campaign
+      // Find active campaign: first check custom bot workspace, then user's workspace, else any active public campaign
       const user = await User.findOne({ telegram_id: tgId });
       let member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
 
-      let campaign = member
-        ? await Campaign.findOne({ workspace_id: member.workspace_id, status: 'active' })
+      const customWsId = (ctx as any).workspaceId;
+      let campaign = customWsId
+        ? await Campaign.findOne({ workspace_id: customWsId, status: 'active' })
         : null;
+
+      if (!campaign && member) {
+        campaign = await Campaign.findOne({ workspace_id: member.workspace_id, status: 'active' });
+      }
 
       if (!campaign) {
         campaign = await Campaign.findOne({ status: 'active' });
@@ -1339,6 +1382,324 @@ export class TelegramService {
     } catch (err: any) {
       logger.warn(`Could not send Telegram message to ${userTelegramId}: ${err.message}`);
       return false;
+    }
+  }
+
+  /**
+   * Custom Bot Manager Interface inside Telegram
+   */
+  static async sendCustomBotManager(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const user = await User.findOne({ telegram_id: tgId });
+      const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+      const wsId = (ctx as any).workspaceId || member?.workspace_id;
+
+      if (!wsId) {
+        return this.safeReply(
+          ctx,
+          `⚠️ <b>No Active Workspace Found</b>\n\nPlease launch your creator workspace first using /start or by visiting the web dashboard.`,
+          { reply_markup: { inline_keyboard: [[{ text: '◀️ Main Menu', callback_data: 'cb_menu' }]] } }
+        );
+      }
+
+      const connectedBot = await ConnectedBot.findOne({ workspace_id: wsId });
+      const { CustomBotManager } = await import('./custom-bot.manager');
+      const isRunning = CustomBotManager.isBotRunning(String(wsId));
+
+      if (connectedBot && connectedBot.bot_username) {
+        const statusBadge = isRunning ? '🟢 Live & Polling' : (connectedBot.health_status === 'error' ? '🔴 Error' : '🟡 Stopped');
+        const lastChecked = connectedBot.last_health_check_at ? new Date(connectedBot.last_health_check_at).toLocaleTimeString() : 'Just now';
+
+        const text =
+          `🤖 <b>Custom Branded Telegram Bot</b>\n\n` +
+          `• <b>Bot Name:</b> ${this.escapeHtml(connectedBot.first_name || 'Branded Bot')}\n` +
+          `• <b>Bot Username:</b> @${connectedBot.bot_username}\n` +
+          `• <b>Bot Telegram ID:</b> <code>${connectedBot.bot_id}</code>\n` +
+          `• <b>Runtime Status:</b> <b>${statusBadge}</b>\n` +
+          `• <b>Token Security:</b> 🔒 AES-256-GCM Encrypted\n` +
+          `• <b>Last Checked:</b> ${lastChecked}\n` +
+          (connectedBot.error_message ? `\n⚠️ <i>Last Error: ${this.escapeHtml(connectedBot.error_message)}</i>\n` : '') +
+          `\n💡 <i>Your custom bot runs the full TeleGrowth engine! Members can generate invite links directly inside @${connectedBot.bot_username}.</i>`;
+
+        const dashBtn = this.makeWebButton('💻 Web Settings', '/channels', 'cmd_open_dashboard');
+        const botUrl = `https://t.me/${connectedBot.bot_username}`;
+
+        return this.safeReply(ctx, text, {
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: '⚡ Ping & Health Test', callback_data: 'cb_custom_bot_ping' },
+                { text: '🚀 Open Custom Bot', url: botUrl },
+              ],
+              [
+                { text: '🔄 Restart Polling Daemon', callback_data: 'cb_custom_bot_restart' },
+                { text: '❌ Disconnect Bot', callback_data: 'cb_custom_bot_disconnect' },
+              ],
+              [dashBtn, { text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        });
+      } else {
+        const text =
+          `🤖 <b>Connect Your Custom Branded Telegram Bot</b>\n\n` +
+          `White-label TeleGrowth completely under your own brand and bot identity!\n\n` +
+          `<b>✨ Benefits of a Custom Bot:</b>\n` +
+          `• Your own bot name, profile picture, and description\n` +
+          `• Attributed links branded under @YourBot\n` +
+          `• Direct Telegram channel administrator capabilities\n\n` +
+          `<b>📋 Quick 3-Step Setup:</b>\n` +
+          `1️⃣ Open @BotFather in Telegram and send <code>/newbot</code>\n` +
+          `2️⃣ Choose a name and username (e.g. <code>@MyCommunityRefBot</code>)\n` +
+          `3️⃣ Copy the API Token and connect it via:\n` +
+          `<code>/setcustombot YOUR_BOT_TOKEN</code>\n\n` +
+          `<i>Or manage custom bots anytime from the Web Dashboard Channels & Bots page.</i>`;
+
+        const dashBtn = this.makeWebButton('💻 Connect on Web', '/channels', 'cmd_open_dashboard');
+
+        return this.safeReply(ctx, text, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🤖 Open @BotFather', url: 'https://t.me/BotFather' }],
+              [dashBtn, { text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        });
+      }
+    } catch (err: any) {
+      logger.error('Error in sendCustomBotManager:', { error: err.message });
+      await this.safeReply(ctx, `⚠️ Error loading custom bot manager: ${err.message}`);
+    }
+  }
+
+  /**
+   * Handle /setcustombot <token> command
+   */
+  static async handleSetCustomBot(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const user = await User.findOne({ telegram_id: tgId });
+      const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+      if (!member) {
+        return this.safeReply(ctx, `⚠️ No active workspace found. Run /start to initialize.`);
+      }
+
+      const msgText = ctx.message && 'text' in ctx.message ? ctx.message.text : '';
+      const parts = msgText.trim().split(/\s+/);
+      const token = parts[1];
+
+      if (!token || !token.includes(':')) {
+        return this.safeReply(
+          ctx,
+          `⚠️ <b>Missing or Invalid Token</b>\n\n` +
+          `Please provide your BotFather token after the command, for example:\n` +
+          `<code>/setcustombot 123456789:ABCdefGhIjklMnOpQrStUvWxYz</code>\n\n` +
+          `<i>You can get your token from @BotFather.</i>`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🤖 Open @BotFather', url: 'https://t.me/BotFather' }],
+                [{ text: '◀️ Custom Bot Menu', callback_data: 'cb_custom_bot' }],
+              ],
+            },
+          }
+        );
+      }
+
+      await this.safeReply(ctx, `⏳ <i>Verifying token with Telegram servers and establishing secure encryption...</i>`);
+
+      const botInfo = await this.verifyCustomBotToken(token);
+      const { encrypted, iv, tag } = encryptToken(token);
+      const crypto = await import('crypto');
+      const webhookSecret = crypto.randomBytes(24).toString('hex');
+      const wsId = String(member.workspace_id);
+
+      await ConnectedBot.findOneAndUpdate(
+        { workspace_id: wsId },
+        {
+          $set: {
+            bot_id: botInfo.botId,
+            bot_username: botInfo.botUsername,
+            first_name: botInfo.firstName,
+            token_encrypted: encrypted,
+            token_iv: iv,
+            token_tag: tag,
+            webhook_secret: webhookSecret,
+            is_primary: false,
+            is_active: true,
+            health_status: 'healthy',
+            last_health_check_at: new Date(),
+            error_message: null,
+          },
+        },
+        { upsert: true, new: true }
+      );
+
+      const { CustomBotManager } = await import('./custom-bot.manager');
+      const startResult = await CustomBotManager.startCustomBot(wsId, token);
+
+      if (startResult.success) {
+        const botUrl = `https://t.me/${botInfo.botUsername}`;
+        await this.safeReply(
+          ctx,
+          `🎉 <b>Custom Bot Connected & Polling Successfully!</b>\n\n` +
+          `• <b>Bot:</b> @${botInfo.botUsername} (${botInfo.firstName})\n` +
+          `• <b>Bot ID:</b> <code>${botInfo.botId}</code>\n` +
+          `• <b>Encryption:</b> 🔒 AES-256-GCM Secure\n` +
+          `• <b>Daemon Status:</b> 🟢 Active & Polling\n\n` +
+          `Your custom bot is now actively listening for commands, referral links, and member joins!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: '🚀 Open Custom Bot', url: botUrl },
+                  { text: '⚡ Health Check', callback_data: 'cb_custom_bot_ping' },
+                ],
+                [{ text: '◀️ Bot Manager', callback_data: 'cb_custom_bot' }],
+              ],
+            },
+          }
+        );
+      } else {
+        await this.safeReply(
+          ctx,
+          `⚠️ <b>Custom Bot Verified but Failed to Launch Polling:</b>\n${startResult.error}\n\nPlease check token permissions or try again.`,
+          {
+            reply_markup: {
+              inline_keyboard: [[{ text: '◀️ Bot Manager', callback_data: 'cb_custom_bot' }]],
+            },
+          }
+        );
+      }
+    } catch (err: any) {
+      logger.error('Error in handleSetCustomBot:', { error: err.message });
+      await this.safeReply(ctx, `❌ Failed to connect custom bot: ${err.message}`);
+    }
+  }
+
+  /**
+   * Diagnostic ping on custom bot
+   */
+  static async handleCustomBotPingAction(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const user = await User.findOne({ telegram_id: tgId });
+      const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+      const wsId = (ctx as any).workspaceId || member?.workspace_id;
+
+      if (!wsId) return;
+
+      const { CustomBotManager } = await import('./custom-bot.manager');
+      const result = await CustomBotManager.pingCustomBot(String(wsId));
+
+      if (result.success) {
+        await this.safeReply(
+          ctx,
+          `⚡ <b>Custom Bot Diagnostics: HEALTHY</b>\n\n` +
+          `• <b>Bot:</b> @${result.botInfo?.username} (${result.botInfo?.first_name})\n` +
+          `• <b>Telegram API Ping:</b> <code>${result.pingMs}ms</code> ⚡\n` +
+          `• <b>Polling Engine:</b> 🟢 ${result.isRunning ? 'Running' : 'Restarted'}\n` +
+          `• <b>Can Join Groups:</b> ${result.botInfo?.can_join_groups ? 'Yes ✅' : 'No ❌'}\n` +
+          `• <b>Inline Queries:</b> ${result.botInfo?.supports_inline_queries ? 'Enabled ✅' : 'Disabled'}\n\n` +
+          `Everything is connected and operational!`,
+          {
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🚀 Open Custom Bot', url: `https://t.me/${result.botInfo?.username}` }],
+                [{ text: '◀️ Back to Bot Manager', callback_data: 'cb_custom_bot' }],
+              ],
+            },
+          }
+        );
+      } else {
+        await this.safeReply(
+          ctx,
+          `🔴 <b>Custom Bot Diagnostics: ERROR</b>\n\n` +
+          `Error: ${this.escapeHtml(result.error || 'Failed to ping bot API')}\n\n` +
+          `Please check that the bot token is still valid in @BotFather.`,
+          {
+            reply_markup: {
+              inline_keyboard: [[{ text: '◀️ Back to Bot Manager', callback_data: 'cb_custom_bot' }]],
+            },
+          }
+        );
+      }
+    } catch (err: any) {
+      await this.safeReply(ctx, `⚠️ Ping diagnostic failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Restart custom bot polling daemon
+   */
+  static async handleCustomBotRestartAction(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const user = await User.findOne({ telegram_id: tgId });
+      const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+      const wsId = (ctx as any).workspaceId || member?.workspace_id;
+      if (!wsId) return;
+
+      const { CustomBotManager } = await import('./custom-bot.manager');
+      const startResult = await CustomBotManager.startCustomBot(String(wsId));
+
+      if (startResult.success) {
+        await this.safeReply(
+          ctx,
+          `🔄 <b>Custom Bot Restarted Successfully!</b>\n\nBot @${startResult.botUsername} daemon is actively polling Telegram servers.`,
+          {
+            reply_markup: {
+              inline_keyboard: [[{ text: '◀️ Bot Manager', callback_data: 'cb_custom_bot' }]],
+            },
+          }
+        );
+      } else {
+        await this.safeReply(ctx, `⚠️ Failed to restart custom bot: ${startResult.error}`);
+      }
+    } catch (err: any) {
+      await this.safeReply(ctx, `⚠️ Restart error: ${err.message}`);
+    }
+  }
+
+  /**
+   * Disconnect custom bot
+   */
+  static async handleDisconnectCustomBot(ctx: Context): Promise<void> {
+    try {
+      const tgId = String(ctx.from?.id);
+      if (!tgId) return;
+
+      const user = await User.findOne({ telegram_id: tgId });
+      const member = user ? await WorkspaceMember.findOne({ user_id: user._id, status: 'active' }) : null;
+      const wsId = (ctx as any).workspaceId || member?.workspace_id;
+      if (!wsId) return;
+
+      const { CustomBotManager } = await import('./custom-bot.manager');
+      await CustomBotManager.stopCustomBot(String(wsId));
+      await ConnectedBot.findOneAndDelete({ workspace_id: wsId });
+
+      await this.safeReply(
+        ctx,
+        `✅ <b>Custom Bot Disconnected & Stopped</b>\n\nYour custom bot has been stopped and its encrypted token removed from storage. You can reconnect anytime with /setcustombot.`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🤖 Reconnect Custom Bot', callback_data: 'cb_custom_bot' }],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        }
+      );
+    } catch (err: any) {
+      await this.safeReply(ctx, `⚠️ Disconnect error: ${err.message}`);
     }
   }
 }

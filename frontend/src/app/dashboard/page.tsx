@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '../../components/DashboardLayout';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/AuthContext';
 import {
   Users,
   CheckCircle,
@@ -20,6 +21,7 @@ import {
   ChevronRight,
   ExternalLink,
   BookOpen,
+  Bot,
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -33,18 +35,25 @@ import {
 } from 'recharts';
 
 export default function DashboardPage() {
+  const { activeWorkspace } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7D' | '14D' | '30D' | 'ALL'>('30D');
+  const [customBot, setCustomBot] = useState<{ connected: boolean; bot?: any } | null>(null);
 
   useEffect(() => {
     fetchAnalytics();
-  }, []);
+  }, [activeWorkspace]);
 
   const fetchAnalytics = async () => {
     try {
       const res = await api.getAnalyticsOverview();
       setData(res);
+      if (activeWorkspace) {
+        api.getCustomBot(activeWorkspace._id)
+          .then((botRes: any) => setCustomBot(botRes))
+          .catch(() => setCustomBot(null));
+      }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -111,12 +120,28 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link
+              href="/channels"
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all shadow-sm ${
+                customBot?.connected && customBot.bot?.bot_username
+                  ? 'bg-cyan-50 dark:bg-cyanAccent/10 border-cyan-200 dark:border-cyanAccent/30 text-cyan-800 dark:text-cyanAccent'
+                  : 'bg-slate-100 dark:bg-navy-800 border-slate-200 dark:border-navy-700 text-slate-700 dark:text-slate-300'
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5 text-cyan-600 dark:text-cyanAccent" />
+              <span>
+                {customBot?.connected && customBot.bot?.bot_username
+                  ? `@${customBot.bot.bot_username} (Live)`
+                  : 'Central: @TeleGrowthnxbot'}
+              </span>
+            </Link>
+
             <a
               href={api.exportCsvUrl()}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-navy-800 border border-navy-700 hover:border-navy-650 text-xs font-semibold text-slate-300 hover:text-white hover:bg-navy-750 transition-all shadow-sm"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-navy-800 border border-slate-200 dark:border-navy-700 hover:border-slate-300 dark:hover:border-navy-650 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-all shadow-sm"
             >
               <Download className="w-3.5 h-3.5 text-slate-400" />
               <span>Export CSV</span>

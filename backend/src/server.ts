@@ -24,6 +24,7 @@ import { analyticsRouter } from './modules/analytics/analytics.routes';
 import { adminRouter } from './modules/admin/admin.routes';
 import { webhookRouter } from './modules/telegram/webhook.routes';
 import { TelegramService } from './modules/telegram/telegram.service';
+import { CustomBotManager } from './modules/telegram/custom-bot.manager';
 
 const app = express();
 const server = http.createServer(app);
@@ -103,6 +104,7 @@ export async function startServer() {
   await connectDatabase();
   await seedInitialData();
   await TelegramService.launchBot();
+  await CustomBotManager.launchAllActiveBots();
 
   return new Promise<http.Server>((resolve) => {
     server.listen(config.port, () => {

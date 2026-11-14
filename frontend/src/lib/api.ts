@@ -47,8 +47,13 @@ export const api = {
   getWorkspaceChats: (workspaceId: string) => apiRequest(`/workspaces/${workspaceId}/chats`),
   verifyChat: (workspaceId: string, chatId: string) =>
     apiRequest(`/workspaces/${workspaceId}/chats/verify`, { method: 'POST', body: JSON.stringify({ chatId }) }),
+  getCustomBot: (workspaceId: string) => apiRequest(`/workspaces/${workspaceId}/custom-bot`),
   connectCustomBot: (workspaceId: string, token: string) =>
     apiRequest(`/workspaces/${workspaceId}/custom-bot`, { method: 'POST', body: JSON.stringify({ token }) }),
+  testCustomBot: (workspaceId: string) =>
+    apiRequest(`/workspaces/${workspaceId}/custom-bot/test`, { method: 'POST' }),
+  disconnectCustomBot: (workspaceId: string) =>
+    apiRequest(`/workspaces/${workspaceId}/custom-bot`, { method: 'DELETE' }),
 
   // Campaigns
   getCampaigns: () => apiRequest('/campaigns'),
