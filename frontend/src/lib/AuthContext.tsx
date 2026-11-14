@@ -28,7 +28,8 @@ interface AuthContextType {
   activeWorkspace: Workspace | null;
   token: string | null;
   isLoading: boolean;
-  loginWithDev: (role?: 'superadmin' | 'user') => Promise<void>;
+  loginWithTelegramData: (data: any) => Promise<void>;
+  loginWithToken: (token: string, workspaceId?: string) => Promise<void>;
   switchWorkspace: (workspaceId: string) => void;
   logout: () => void;
   refreshUserData: () => Promise<void>;
@@ -98,18 +99,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const loginWithDev = async (role: 'superadmin' | 'user' = 'user') => {
+  const loginWithTelegramData = async (telegramAuthData: any) => {
     setIsLoading(true);
     try {
-      const tgId = role === 'superadmin' ? '123456789' : '88880001';
-      const name = role === 'superadmin' ? 'Super Admin' : 'Alex Founder';
-      const res = await api.devLogin({
-        telegramId: tgId,
-        firstName: name,
-        username: role === 'superadmin' ? 'superadmin' : 'alex_founder',
-        role,
-      });
-
+      const res = await api.telegramWidgetLogin(telegramAuthData);
       localStorage.setItem('token', res.token);
       setToken(res.token);
       if (res.workspaceId) {
@@ -117,7 +110,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
       await fetchProfile();
     } catch (err) {
-      console.error('Dev login failed:', err);
+      console.error('Telegram login failed:', err);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWithToken = async (jwtToken: string, workspaceId?: string) => {
+    setIsLoading(true);
+    try {
+      localStorage.setItem('token', jwtToken);
+      setToken(jwtToken);
+      if (workspaceId) {
+        localStorage.setItem('activeWorkspaceId', workspaceId);
+      }
+      await fetchProfile();
+    } catch (err) {
+      console.error('Session login failed:', err);
+      throw err;
     } finally {
       setIsLoading(false);
     }
@@ -150,7 +161,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         activeWorkspace,
         token,
         isLoading,
-        loginWithDev,
+        loginWithTelegramData,
+        loginWithToken,
         switchWorkspace,
         logout,
         refreshUserData: fetchProfile,

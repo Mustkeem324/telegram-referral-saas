@@ -10,7 +10,141 @@ export interface AuthTokenPayload {
   role: 'superadmin' | 'user';
 }
 
+interface BotAuthSession {
+  sessionId: string;
+  createdAt: number;
+  authenticated: boolean;
+  token?: string;
+  workspaceId?: string;
+  user?: any;
+}
+
+const authSessions = new Map<string, BotAuthSession>();
+
 export class AuthService {
+  /**
+   * Create a secure Telegram Bot deep-link session
+   */
+  static createBotAuthSession(): { sessionId: string; botDeepLink: string } {
+    const randomHex = require('crypto').randomBytes(12).toString('hex');
+    const sessionId = `auth_${randomHex}`;
+    authSessions.set(sessionId, {
+      sessionId,
+      createdAt: Date.now(),
+      authenticated: false,
+    });
+
+    // Cleanup sessions older than 10 minutes
+    const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+    for (const [key, sess] of authSessions.entries()) {
+      if (sess.createdAt < tenMinutesAgo) {
+        authSessions.delete(key);
+      }
+    }
+
+    return {
+      sessionId,
+      botDeepLink: `https://t.me/${config.telegram.botUsername}?start=${sessionId}`,
+    };
+  }
+
+  /**
+   * Get session status
+   */
+  static getBotAuthSession(sessionId: string): BotAuthSession | undefined {
+    return authSessions.get(sessionId);
+  }
+
+  /**
+   * Complete bot session upon /start in Telegram
+   */
+  static async completeBotAuthSession(sessionId: string, tgUser: {
+    id: string | number;
+    first_name: string;
+    last_name?: string;
+    username?: string;
+    photo_url?: string;
+  }): Promise<boolean> {
+    const session = authSessions.get(sessionId);
+    if (!session) return false;
+
+    const telegramId = String(tgUser.id);
+    let user = await User.findOne({ telegram_id: telegramId });
+
+    if (!user) {
+      const isSuper = telegramId === config.superAdmin.telegramId;
+      user = await User.create({
+        telegram_id: telegramId,
+        first_name: tgUser.first_name || 'Creator',
+        last_name: tgUser.last_name || '',
+        username: tgUser.username,
+        photo_url: tgUser.photo_url,
+        role: isSuper ? 'superadmin' : 'user',
+        is_active: true,
+      });
+
+      const freePlan = (await SubscriptionPlan.findOne({ code: isSuper ? 'enterprise' : 'free' })) ||
+                       (await SubscriptionPlan.findOne());
+
+      if (freePlan) {
+        const workspace = await Workspace.create({
+          name: `${user.first_name}'s Workspace`,
+          slug: `workspace-${user.telegram_id}-${Date.now().toString(36)}`,
+          owner_id: user._id,
+          owner_telegram_id: user.telegram_id,
+          plan_id: freePlan._id,
+          status: 'active',
+        });
+
+        await WorkspaceMember.create({
+          workspace_id: workspace._id,
+          user_id: user._id,
+          user_telegram_id: user.telegram_id,
+          role: 'owner',
+          status: 'active',
+        });
+
+        const oneMonthLater = new Date();
+        oneMonthLater.setMonth(oneMonthLater.getMonth() + 1);
+
+        await Subscription.create({
+          workspace_id: workspace._id,
+          plan_id: freePlan._id,
+          status: 'active',
+          current_period_start: new Date(),
+          current_period_end: oneMonthLater,
+          payment_provider: 'manual',
+        });
+      }
+    } else {
+      user.first_name = tgUser.first_name || user.first_name;
+      user.last_name = tgUser.last_name || user.last_name;
+      if (tgUser.username) user.username = tgUser.username;
+      if (tgUser.photo_url) user.photo_url = tgUser.photo_url;
+      await user.save();
+    }
+
+    if (!user.is_active) {
+      return false;
+    }
+
+    const token = this.generateToken({
+      userId: user._id.toString(),
+      telegramId: user.telegram_id,
+      role: user.role,
+    });
+
+    const primaryMember = await WorkspaceMember.findOne({ user_id: user._id, status: 'active' });
+
+    session.authenticated = true;
+    session.token = token;
+    session.workspaceId = primaryMember?.workspace_id?.toString();
+    session.user = user;
+    authSessions.set(sessionId, session);
+
+    return true;
+  }
+
   /**
    * Issue JWT token
    */

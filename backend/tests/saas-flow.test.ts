@@ -1,6 +1,8 @@
 import request from 'supertest';
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { app } from '../src/server';
+import { config } from '../src/config';
 import { connectDatabase, disconnectDatabase } from '../src/database/connection';
 import { seedInitialData } from '../src/database/seeds';
 import {
@@ -11,6 +13,19 @@ import {
   GiveawayWinner,
 } from '../src/database/models';
 import { ReferralService } from '../src/modules/referrals/referral.service';
+
+function generateValidTelegramWidgetData(user: { id: string; first_name: string; username?: string }) {
+  const data: Record<string, string> = {
+    id: user.id,
+    first_name: user.first_name,
+    auth_date: Math.floor(Date.now() / 1000).toString(),
+  };
+  if (user.username) data.username = user.username;
+  const checkString = Object.keys(data).sort().map(k => `${k}=${data[k]}`).join('\n');
+  const secretKey = crypto.createHash('sha256').update(config.telegram.botToken).digest();
+  const hash = crypto.createHmac('sha256', secretKey).update(checkString).digest('hex');
+  return { ...data, hash };
+}
 
 describe('Telegram Referral & Giveaway SaaS Complete Flow', () => {
   let creatorToken: string;
@@ -30,15 +45,16 @@ describe('Telegram Referral & Giveaway SaaS Complete Flow', () => {
     await disconnectDatabase();
   });
 
-  it('1. Creator Registration & Workspace Creation', async () => {
+  it('1. Creator Registration & Workspace Creation via Real Telegram Authentication', async () => {
+    const widgetData = generateValidTelegramWidgetData({
+      id: creatorTelegramId,
+      first_name: 'Alice Founder',
+      username: 'alice_founder',
+    });
+
     const res = await request(app)
-      .post('/api/auth/dev-login')
-      .send({
-        telegramId: creatorTelegramId,
-        firstName: 'Alice Founder',
-        username: 'alice_founder',
-        role: 'user',
-      });
+      .post('/api/auth/telegram-widget')
+      .send(widgetData);
 
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();

@@ -106,6 +106,26 @@ export class TelegramService {
           }
         }
 
+        // Handle Telegram Login Session deep link
+        if (startPayload && startPayload.startsWith('auth_')) {
+          const { AuthService } = await import('../auth/auth.service');
+          const authenticated = await AuthService.completeBotAuthSession(startPayload, {
+            id: from.id,
+            first_name: from.first_name,
+            last_name: from.last_name,
+            username: from.username,
+          });
+
+          if (authenticated) {
+            await ctx.replyWithMarkdown(
+              `🔐 **Authentication Confirmed!**\n\n` +
+              `Welcome, **${from.first_name}**! You are now securely logged into **TeleGrowth SaaS**.\n\n` +
+              `Your browser dashboard will update automatically, or visit: ${config.frontendUrl}/dashboard`
+            );
+            return;
+          }
+        }
+
         // Handle referral deep link if user joined through a campaign referral link
         if (startPayload && startPayload.startsWith('ref_')) {
           const code = startPayload.replace('ref_', '');

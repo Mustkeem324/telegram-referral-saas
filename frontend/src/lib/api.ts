@@ -32,9 +32,9 @@ export async function apiRequest(endpoint: string, options: RequestInit = {}) {
 }
 
 export const api = {
-  // Auth
-  devLogin: (params: { telegramId?: string; firstName?: string; username?: string; role?: string }) =>
-    apiRequest('/auth/dev-login', { method: 'POST', body: JSON.stringify(params) }),
+  // Real Telegram Auth
+  createBotAuthSession: () => apiRequest('/auth/bot-session', { method: 'POST' }),
+  checkBotAuthSession: (sessionId: string) => apiRequest(`/auth/bot-session/${sessionId}`),
   telegramWidgetLogin: (data: any) =>
     apiRequest('/auth/telegram-widget', { method: 'POST', body: JSON.stringify(data) }),
   telegramWebAppLogin: (initData: string) =>
