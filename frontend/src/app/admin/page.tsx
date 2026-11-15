@@ -110,6 +110,14 @@ export default function SuperAdminPage() {
           <p className="text-sm text-slate-400 mt-2 max-w-md mx-auto">
             This console is restricted to the Platform Owner and authorized administrators. Authenticate with an approved Telegram ID to access.
           </p>
+          <div className="mt-6">
+            <a
+              href="/dashboard"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+            >
+              Return to Dashboard
+            </a>
+          </div>
         </div>
       </DashboardLayout>
     );
