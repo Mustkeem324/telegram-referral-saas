@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, ConnectedBotModel } from '@/lib/db';
+import { connectDB, ConnectedBotModel, memConnectedBots } from '@/lib/db';
 
 // POST: Run a diagnostic ping test on the connected custom bot
 export async function POST(
@@ -7,31 +7,42 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const startTime = Date.now();
-  try {
-    await connectDB();
-    const workspaceId = params.id;
-    const bot = await ConnectedBotModel.findOne({ workspace_id: workspaceId });
+  const workspaceId = params.id;
 
-    if (!bot || !bot.token) {
+  try {
+    let token: string | undefined = undefined;
+
+    try {
+      const conn = await connectDB();
+      if (conn) {
+        const bot = await ConnectedBotModel.findOne({ workspace_id: workspaceId });
+        if (bot?.token) token = bot.token;
+      }
+    } catch (e) {
+      console.warn('DB custom bot test check fallback to memory');
+    }
+
+    if (!token) {
+      const memBot = memConnectedBots.get(workspaceId);
+      if (memBot?.token) token = memBot.token;
+    }
+
+    if (!token) {
       return NextResponse.json({
         success: false,
         pingMs: 0,
         isRunning: false,
-        error: 'No active custom bot found for this workspace. Please connect a bot token first.',
+        error: 'No active custom bot found for this workspace. Please connect a bot token from @BotFather first.',
       });
     }
 
     // Ping Telegram API
     const pingStart = Date.now();
-    const res = await fetch(`https://api.telegram.org/bot${bot.token}/getMe`);
+    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
     const pingMs = Date.now() - pingStart;
     const data = await res.json().catch(() => ({}));
 
     if (!data.ok || !data.result) {
-      await ConnectedBotModel.updateOne(
-        { workspace_id: workspaceId },
-        { $set: { health_status: 'error', last_health_check_at: new Date() } }
-      );
       return NextResponse.json({
         success: false,
         pingMs,
@@ -40,17 +51,30 @@ export async function POST(
       });
     }
 
-    // Update healthy stats in MongoDB
-    await ConnectedBotModel.updateOne(
-      { workspace_id: workspaceId },
-      {
-        $set: {
-          health_status: 'healthy',
-          last_ping_ms: pingMs,
-          last_health_check_at: new Date(),
-        },
+    // Update memory
+    const memBot = memConnectedBots.get(workspaceId);
+    if (memBot) {
+      memBot.health_status = 'healthy';
+      memBot.last_ping_ms = pingMs;
+      memBot.last_health_check_at = new Date();
+    }
+
+    // Update MongoDB if available
+    try {
+      const conn = await connectDB();
+      if (conn) {
+        await ConnectedBotModel.updateOne(
+          { workspace_id: workspaceId },
+          {
+            $set: {
+              health_status: 'healthy',
+              last_ping_ms: pingMs,
+              last_health_check_at: new Date(),
+            },
+          }
+        );
       }
-    );
+    } catch (e) {}
 
     return NextResponse.json({
       success: true,
