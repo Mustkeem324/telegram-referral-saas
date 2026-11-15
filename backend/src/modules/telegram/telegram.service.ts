@@ -1425,6 +1425,27 @@ export class TelegramService {
         logger.info(`🤖 Telegram Bot Webhook registered: ${config.telegram.webhookUrl}`);
       } else {
         await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+
+        // Auto-register bot commands and descriptions on launch
+        bot.telegram.setMyCommands([
+          { command: 'start', description: '🚀 Open Main Menu & Referral Hub' },
+          { command: 'link', description: '🔗 Get your unique referral invite link' },
+          { command: 'stats', description: '📊 Check verified joins & points balance' },
+          { command: 'leaderboard', description: '🏆 View top community referrers' },
+          { command: 'box', description: '🎁 Open mystery loot chests & streak rewards' },
+          { command: 'rewards', description: '💎 Milestone prizes & claim vouchers' },
+          { command: 'howitworks', description: '📖 Step-by-step interactive tutorial' },
+          { command: 'dashboard', description: '🖥️ Open web creator studio & analytics' },
+          { command: 'channels', description: '📢 Connect your channel/group as admin' },
+          { command: 'rules', description: '🛡️ Anti-fraud retention & fair play rules' },
+          { command: 'faq', description: '❓ Frequently asked questions' },
+          { command: 'support', description: '👤 Contact Lead Developer & Support (@nxproo)' },
+        ]).catch(() => {});
+
+        bot.telegram.setMyShortDescription(
+          '⚡ Viral Telegram Growth & Referral SaaS Engine with cryptographic invite tracking, anti-fraud & rewards.'
+        ).catch(() => {});
+
         bot.launch({
           allowedUpdates: ['message', 'callback_query', 'chat_member', 'my_chat_member', 'pre_checkout_query'],
           dropPendingUpdates: true,
