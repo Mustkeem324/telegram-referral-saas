@@ -7,7 +7,7 @@ import {
   getRealUserStats,
   getRealLeaderboard,
   getRealMilestoneProgress,
-  UserModel,
+  openMysteryBoxAction,
 } from '@/lib/db';
 
 const botTokenStorage = new AsyncLocalStorage<string>();
@@ -88,38 +88,7 @@ async function getRewardsMessage(userId: number | string): Promise<string> {
 
 // Real Mystery Box Opener
 async function openMysteryBox(userId: number | string, firstName: string): Promise<{ success: boolean; text: string }> {
-  const user = await UserModel.findOne({ telegram_id: String(userId) });
-  const boxCount = user?.mystery_boxes || 0;
-
-  if (boxCount <= 0) {
-    return {
-      success: false,
-      text:
-        `🎁 <b>Mystery Vault</b>\n\n` +
-        `You currently have <b>0 Unopened Mystery Boxes</b>.\n\n` +
-        `✨ <b>How to earn Mystery Boxes:</b>\n` +
-        `• Earn <b>+1 Mystery Box</b> for every 3 friends you invite!\n` +
-        `• Maintain continuous daily activity streaks.\n\n` +
-        `Run /link to get your referral link and invite friends!`,
-    };
-  }
-
-  if (user) {
-    user.mystery_boxes -= 1;
-    user.points += 50;
-    await user.save();
-  }
-
-  return {
-    success: true,
-    text:
-      `🎁 <b>MYSTERY VAULT UNLOCKED!</b> ⚡\n\n` +
-      `Congratulations <b>${escapeHtml(firstName)}</b>!\n` +
-      `You opened 1 Mystery Box and unlocked:\n` +
-      `<b>⭐ +50 Bonus Viral Points!</b>\n\n` +
-      `Remaining Boxes: <b>${user?.mystery_boxes || 0}</b>\n` +
-      `Updated Balance: <b>${user?.points || 0} pts</b>`,
-  };
+  return openMysteryBoxAction(userId, firstName);
 }
 
 // Helper to call Telegram Bot API (supports both default and custom bot tokens)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, TelegramChatModel } from '@/lib/db';
+import { saveTelegramChat } from '@/lib/db';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9221628840:AAH7Kwc4Ct210wry3nfUSXvSiQwzRV0he6c';
 
@@ -8,7 +8,6 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    await connectDB();
     const workspaceId = params.id;
     const body = await req.json().catch(() => ({}));
     const rawChatId = (body.chatId || '').trim();
@@ -37,20 +36,15 @@ export async function POST(
     const title = chat.title || chat.username || 'Telegram Community';
     const type = chat.type === 'channel' ? 'channel' : chat.type === 'supergroup' ? 'supergroup' : 'group';
 
-    // Save or update in MongoDB
-    const chatDoc = await TelegramChatModel.findOneAndUpdate(
-      { workspace_id: workspaceId, chat_id: chatIdStr },
-      {
-        $set: {
-          title,
-          type,
-          username: chat.username,
-          is_bot_admin: true,
-          verification_status: 'verified',
-        },
-      },
-      { upsert: true, new: true }
-    );
+    // Resilient save to MongoDB Atlas or serverless memory fallback
+    const chatDoc = await saveTelegramChat(workspaceId, {
+      chat_id: chatIdStr,
+      title,
+      type,
+      username: chat.username,
+      is_bot_admin: true,
+      verification_status: 'verified',
+    });
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, ConnectedBotModel, memConnectedBots } from '@/lib/db';
+import { connectDB, isDbConnected, ConnectedBotModel, memConnectedBots } from '@/lib/db';
 
 // POST: Run a diagnostic ping test on the connected custom bot
 export async function POST(
@@ -14,7 +14,7 @@ export async function POST(
 
     try {
       const conn = await connectDB();
-      if (conn) {
+      if (conn && isDbConnected()) {
         const bot = await ConnectedBotModel.findOne({ workspace_id: workspaceId });
         if (bot?.token) token = bot.token;
       }
@@ -62,7 +62,7 @@ export async function POST(
     // Update MongoDB if available
     try {
       const conn = await connectDB();
-      if (conn) {
+      if (conn && isDbConnected()) {
         await ConnectedBotModel.updateOne(
           { workspace_id: workspaceId },
           {

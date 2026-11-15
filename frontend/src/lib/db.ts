@@ -27,14 +27,15 @@ export const memChats = global.memChatsStore || (global.memChatsStore = new Map(
 export const memCampaigns = global.memCampaignsStore || (global.memCampaignsStore = []);
 
 export async function connectDB(): Promise<typeof mongoose | null> {
-  if (cached!.conn) {
-    return cached!.conn;
+  if (cached?.conn && (mongoose.connection.readyState as number) === 1) {
+    return cached.conn;
   }
 
   if (!cached!.promise) {
     const opts = {
-      bufferCommands: false,
-      serverSelectionTimeoutMS: 2500, // fast failover to memory if IP not whitelisted
+      bufferCommands: true,
+      serverSelectionTimeoutMS: 4000,
+      connectTimeoutMS: 4000,
     };
     cached!.promise = mongoose.connect(MONGO_URI, opts).then((m) => m);
   }
@@ -48,6 +49,10 @@ export async function connectDB(): Promise<typeof mongoose | null> {
     console.warn(`⚠️ [DB_FALLBACK] MongoDB Atlas unreachable (${e?.message}). Operating in resilient cloud fallback mode.`);
     return null;
   }
+}
+
+export function isDbConnected(): boolean {
+  return (mongoose.connection.readyState as number) === 1;
 }
 
 // -------------------------------------------------------------
@@ -250,7 +255,7 @@ export async function getOrCreateUser(telegramId: number | string, profile: {
   const tid = String(telegramId);
   const conn = await connectDB();
 
-  if (conn) {
+  if (conn && isDbConnected()) {
     try {
       let user = await UserModel.findOne({ telegram_id: tid });
       if (!user) {
@@ -334,7 +339,7 @@ export async function recordRealReferral(referrerTelegramId: string, newUserId: 
   const points = newUserProfile.is_premium ? 20 : 10;
   const conn = await connectDB();
 
-  if (conn) {
+  if (conn && isDbConnected()) {
     try {
       await getOrCreateUser(newTid, newUserProfile);
       const existing = await ReferralModel.findOne({ referred_telegram_id: newTid });
@@ -399,7 +404,7 @@ export async function getRealUserStats(telegramId: number | string) {
   const tid = String(telegramId);
   const conn = await connectDB();
 
-  if (conn) {
+  if (conn && isDbConnected()) {
     try {
       const user = await UserModel.findOne({ telegram_id: tid });
       if (user) {
@@ -474,7 +479,7 @@ export async function getRealLeaderboard(limit = 10): Promise<{
   }>;
 }> {
   const conn = await connectDB();
-  if (conn) {
+  if (conn && isDbConnected()) {
     try {
       const topUsers = await UserModel.find({ points: { $gt: 0 } })
         .sort({ points: -1, verified_invites: -1 })
@@ -522,7 +527,7 @@ export async function getRealMilestoneProgress(telegramId: number | string) {
   const conn = await connectDB();
   let verified = 0;
 
-  if (conn) {
+  if (conn && isDbConnected()) {
     try {
       const user = await UserModel.findOne({ telegram_id: tid });
       verified = user?.verified_invites || 0;
@@ -552,5 +557,331 @@ export async function getRealMilestoneProgress(telegramId: number | string) {
       completed: verified >= 50,
       remaining: Math.max(0, 50 - verified),
     },
+  };
+}
+
+/**
+ * Resilient Telegram Chat Saving (MongoDB with Serverless Memory Fallback)
+ */
+export async function saveTelegramChat(workspaceId: string, chatData: {
+  chat_id: string;
+  title: string;
+  type: 'channel' | 'group' | 'supergroup';
+  username?: string;
+  is_bot_admin: boolean;
+  verification_status: 'verified' | 'unverified';
+}) {
+  const conn = await connectDB();
+  if (conn && isDbConnected()) {
+    try {
+      const doc = await TelegramChatModel.findOneAndUpdate(
+        { workspace_id: workspaceId, chat_id: chatData.chat_id },
+        { $set: chatData },
+        { upsert: true, new: true }
+      );
+      if (doc) return doc;
+    } catch (err: any) {
+      console.warn('DB saveTelegramChat failed, using memory fallback:', err?.message);
+    }
+  }
+
+  // Resilient memory fallback
+  const list = memChats.get(workspaceId) || [];
+  const existingIdx = list.findIndex((c: any) => c.chat_id === chatData.chat_id);
+  const now = new Date();
+  const item = {
+    _id: `mem_chat_${chatData.chat_id}`,
+    workspace_id: workspaceId,
+    ...chatData,
+    created_at: now,
+    updated_at: now,
+  };
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...chatData, updated_at: now };
+  } else {
+    list.unshift(item);
+  }
+  memChats.set(workspaceId, list);
+  return existingIdx >= 0 ? list[existingIdx] : item;
+}
+
+/**
+ * Get Telegram Chats for Workspace
+ */
+export async function getTelegramChats(workspaceId: string) {
+  const conn = await connectDB();
+  if (conn && isDbConnected()) {
+    try {
+      return await TelegramChatModel.find({ workspace_id: workspaceId }).sort({ created_at: -1 }).lean();
+    } catch (err: any) {
+      console.warn('DB getTelegramChats failed, using memory fallback:', err?.message);
+    }
+  }
+  return memChats.get(workspaceId) || [];
+}
+
+/**
+ * Resilient Campaign Retrieval
+ */
+export async function getCampaignsList(workspaceId: string = 'default_ws') {
+  const conn = await connectDB();
+  if (conn && isDbConnected()) {
+    try {
+      let list = await CampaignModel.find().sort({ created_at: -1 }).lean();
+      if (list.length === 0) {
+        const defaultCamp = await CampaignModel.create({
+          workspace_id: workspaceId,
+          title: 'Community Viral Referral Program',
+          description: 'Earn points and unlock milestone rewards for inviting verified members.',
+          status: 'active',
+          type: 'standard',
+          total_referrals: 0,
+          verified_referrals: 0,
+          reward_policy: {
+            points_per_referral: 10,
+            retention_period_days: 2,
+            hold_period_hours: 0,
+            allow_custom_rewards: true,
+            premium_multiplier: 2,
+            premium_fast_track: false,
+            require_premium_only: false,
+          },
+        });
+        list = [defaultCamp.toObject()];
+      }
+      return list;
+    } catch (err: any) {
+      console.warn('DB getCampaignsList failed, using memory fallback:', err?.message);
+    }
+  }
+
+  // Memory Fallback
+  if (memCampaigns.length === 0) {
+    memCampaigns.push({
+      _id: 'mem_camp_default',
+      workspace_id: workspaceId,
+      title: 'Community Viral Referral Program',
+      description: 'Earn points and unlock milestone rewards for inviting verified members.',
+      status: 'active',
+      type: 'standard',
+      total_referrals: 0,
+      verified_referrals: 0,
+      reward_policy: {
+        points_per_referral: 10,
+        retention_period_days: 2,
+        hold_period_hours: 0,
+        allow_custom_rewards: true,
+        premium_multiplier: 2,
+        premium_fast_track: false,
+        require_premium_only: false,
+      },
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
+  }
+  return memCampaigns;
+}
+
+/**
+ * Resilient Campaign Creation
+ */
+export async function createCampaignRecord(data: any) {
+  const conn = await connectDB();
+  if (conn && isDbConnected()) {
+    try {
+      return await CampaignModel.create(data);
+    } catch (err: any) {
+      console.warn('DB createCampaignRecord failed, using memory fallback:', err?.message);
+    }
+  }
+
+  const newCamp = {
+    _id: `mem_camp_${Date.now()}`,
+    ...data,
+    total_referrals: 0,
+    verified_referrals: 0,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+  memCampaigns.unshift(newCamp);
+  return newCamp;
+}
+
+/**
+ * Resilient Overview Analytics
+ */
+export async function getOverviewAnalytics() {
+  const conn = await connectDB();
+  if (conn && isDbConnected()) {
+    try {
+      const totalReferrals = await ReferralModel.countDocuments();
+      const verifiedReferrals = await ReferralModel.countDocuments({ status: 'verified' });
+      const pendingReferrals = await ReferralModel.countDocuments({ status: 'pending' });
+      const rejectedReferrals = await ReferralModel.countDocuments({ status: 'rejected' });
+
+      const conversionRate = totalReferrals > 0 ? Number(((verifiedReferrals / totalReferrals) * 100).toFixed(1)) : 100.0;
+      const retentionRate = totalReferrals > 0 ? Number(((verifiedReferrals / (totalReferrals || 1)) * 100).toFixed(1)) : 100.0;
+
+      const topUsers = await UserModel.find({ points: { $gt: 0 } })
+        .sort({ points: -1, verified_invites: -1 })
+        .limit(5)
+        .lean();
+
+      const topReferrers = topUsers.map((u) => ({
+        telegram_id: u.telegram_id,
+        first_name: u.first_name,
+        username: u.username,
+        verifiedCount: u.verified_invites || 0,
+        points: u.points || 0,
+      }));
+
+      const now = new Date();
+      const dailyTrend = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const nextD = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i + 1);
+        const dateStr = d.toISOString().split('T')[0];
+
+        const dayTotal = await ReferralModel.countDocuments({
+          created_at: { $gte: d, $lt: nextD },
+        });
+        const dayVerified = await ReferralModel.countDocuments({
+          status: 'verified',
+          created_at: { $gte: d, $lt: nextD },
+        });
+
+        dailyTrend.push({
+          _id: dateStr,
+          total: dayTotal,
+          verified: dayVerified,
+        });
+      }
+
+      return {
+        totalReferrals,
+        verifiedReferrals,
+        pendingReferrals,
+        rejectedReferrals,
+        conversionRate,
+        retentionRate,
+        topReferrers,
+        dailyTrend,
+      };
+    } catch (err: any) {
+      console.warn('DB getOverviewAnalytics failed, using memory fallback:', err?.message);
+    }
+  }
+
+  // Memory Fallback
+  const totalReferrals = memReferrals.length;
+  const verifiedReferrals = memReferrals.filter((r) => r.status === 'verified').length;
+  const pendingReferrals = memReferrals.filter((r) => r.status === 'pending').length;
+  const rejectedReferrals = memReferrals.filter((r) => r.status === 'rejected').length;
+
+  const conversionRate = totalReferrals > 0 ? Number(((verifiedReferrals / totalReferrals) * 100).toFixed(1)) : 100.0;
+  const retentionRate = totalReferrals > 0 ? Number(((verifiedReferrals / (totalReferrals || 1)) * 100).toFixed(1)) : 100.0;
+
+  const sortedUsers: any[] = [];
+  memUsers.forEach((u) => {
+    if (u.points > 0) sortedUsers.push(u);
+  });
+  sortedUsers.sort((a, b) => b.points - a.points || b.verified_invites - a.verified_invites);
+
+  const topReferrers = sortedUsers.slice(0, 5).map((u) => ({
+    telegram_id: u.telegram_id,
+    first_name: u.first_name,
+    username: u.username,
+    verifiedCount: u.verified_invites || 0,
+    points: u.points || 0,
+  }));
+
+  const now = new Date();
+  const dailyTrend = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const dateStr = d.toISOString().split('T')[0];
+    dailyTrend.push({
+      _id: dateStr,
+      total: memReferrals.filter((r) => {
+        const created = new Date(r.created_at || now);
+        return created.toISOString().split('T')[0] === dateStr;
+      }).length,
+      verified: memReferrals.filter((r) => {
+        const created = new Date(r.created_at || now);
+        return r.status === 'verified' && created.toISOString().split('T')[0] === dateStr;
+      }).length,
+    });
+  }
+
+  return {
+    totalReferrals,
+    verifiedReferrals,
+    pendingReferrals,
+    rejectedReferrals,
+    conversionRate,
+    retentionRate,
+    topReferrers,
+    dailyTrend,
+  };
+}
+
+/**
+ * Resilient Mystery Box Opener Action
+ */
+export async function openMysteryBoxAction(userId: number | string, firstName: string): Promise<{ success: boolean; text: string }> {
+  const tid = String(userId);
+  const conn = await connectDB();
+  let boxCount = 0;
+  let userDoc: any = null;
+
+  if (conn && isDbConnected()) {
+    try {
+      userDoc = await UserModel.findOne({ telegram_id: tid });
+      boxCount = userDoc?.mystery_boxes || 0;
+    } catch (e) {
+      console.warn('DB mystery box lookup failed, checking memory');
+    }
+  }
+
+  if (!userDoc) {
+    const memUser = memUsers.get(tid);
+    boxCount = memUser?.mystery_boxes || 0;
+    userDoc = memUser;
+  }
+
+  if (boxCount <= 0) {
+    return {
+      success: false,
+      text:
+        `🎁 <b>Mystery Vault</b>\n\n` +
+        `You currently have <b>0 Unopened Mystery Boxes</b>.\n\n` +
+        `✨ <b>How to earn Mystery Boxes:</b>\n` +
+        `• Earn <b>+1 Mystery Box</b> for every 3 friends you invite!\n` +
+        `• Maintain continuous daily activity streaks.\n\n` +
+        `Run /link to get your referral link and invite friends!`,
+    };
+  }
+
+  // Deduct box and award bonus points
+  if (userDoc) {
+    userDoc.mystery_boxes = Math.max(0, (userDoc.mystery_boxes || 1) - 1);
+    userDoc.points = (userDoc.points || 0) + 50;
+    if (typeof userDoc.save === 'function') {
+      try {
+        await userDoc.save();
+      } catch (e) {
+        memUsers.set(tid, userDoc);
+      }
+    }
+  }
+
+  return {
+    success: true,
+    text:
+      `🎉 <b>Mystery Box Unlocked!</b>\n\n` +
+      `Awesome job, <b>${firstName}</b>! You opened a mystery crate and discovered:\n\n` +
+      `⚡ <b>+50 Viral Points</b> added to your account!\n` +
+      `🌟 <b>Tier Booster Badge</b> activated!\n\n` +
+      `Keep referring new members to unlock more legendary boxes. Run /stats to view your updated rank.`,
   };
 }

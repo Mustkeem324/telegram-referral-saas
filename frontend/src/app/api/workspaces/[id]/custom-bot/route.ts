@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { connectDB, ConnectedBotModel, memConnectedBots } from '@/lib/db';
+import { connectDB, isDbConnected, ConnectedBotModel, memConnectedBots } from '@/lib/db';
 
 const APP_URL = 'https://frontend-eight-ebon-22.vercel.app';
 
@@ -11,7 +11,7 @@ export async function GET(
   const workspaceId = params.id;
   try {
     const conn = await connectDB();
-    if (conn) {
+    if (conn && isDbConnected()) {
       const bot = await ConnectedBotModel.findOne({ workspace_id: workspaceId, is_active: true });
       if (bot) {
         return NextResponse.json({
@@ -116,7 +116,7 @@ export async function POST(
     // Persist real bot in MongoDB if available
     try {
       const conn = await connectDB();
-      if (conn) {
+      if (conn && isDbConnected()) {
         await ConnectedBotModel.findOneAndUpdate(
           { workspace_id: workspaceId },
           { $set: botData },
@@ -154,7 +154,7 @@ export async function DELETE(
 
     try {
       const conn = await connectDB();
-      if (conn) {
+      if (conn && isDbConnected()) {
         const bot = await ConnectedBotModel.findOne({ workspace_id: workspaceId });
         if (bot?.token) token = bot.token;
         await ConnectedBotModel.deleteOne({ workspace_id: workspaceId });
