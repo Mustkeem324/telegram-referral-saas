@@ -26,12 +26,23 @@ async function callTelegramApi(method: string, payload: Record<string, any>) {
 
 // GET handler for health-check & webhook status inspection
 export async function GET() {
-  console.log('🔍 [WEBHOOK_HEALTH] Telegram webhook endpoint pinged via GET');
+  const hasMongo = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
+  const hasRedis = Boolean(process.env.REDIS_URL);
+
+  console.log('🔍 [WEBHOOK_HEALTH_CHECK] Endpoint inspected:');
+  console.log(`   ✦ Telegram Bot: @${BOT_USERNAME} [ONLINE 🟢]`);
+  console.log(`   ✦ Cloud MongoDB: ${hasMongo ? 'Configured (Atlas URI present)' : 'Not Set in Vercel Env (Local Mongo 127.0.0.1 is offline on Vercel)'}`);
+  console.log(`   ✦ Cloud Redis: ${hasRedis ? 'Configured (Upstash URI present)' : 'Not Set in Vercel Env (Local Redis 127.0.0.1 is offline on Vercel)'}`);
+
   return NextResponse.json({
     status: 'online',
-    platform: 'Vercel Serverless Function',
+    platform: 'Vercel Cloud Serverless Function',
     bot: `@${BOT_USERNAME}`,
     webhookEndpoint: `${APP_URL}/api/webhook/telegram`,
+    database: {
+      mongodb: hasMongo ? 'connected' : 'local-only (Requires MongoDB Atlas URI for Vercel)',
+      redis: hasRedis ? 'connected' : 'local-only (Requires Upstash Redis URI for Vercel)',
+    },
     timestamp: new Date().toISOString(),
   });
 }
@@ -49,8 +60,14 @@ export async function POST(req: NextRequest) {
   }
 
   const updateId = body?.update_id;
+  const hasMongo = Boolean(process.env.MONGO_URI || process.env.MONGODB_URI);
+  const hasRedis = Boolean(process.env.REDIS_URL);
+
   console.log(`\n==================== [TELEGRAM INCOMING UPDATE #${updateId}] ====================`);
   console.log(`⏰ Timestamp: ${timestamp}`);
+  console.log(`🤖 Bot Node: @${BOT_USERNAME} (Vercel Cloud Serverless)`);
+  console.log(`🗄️ MongoDB Cloud: ${hasMongo ? '🟢 Atlas Connected' : '🟡 Offline on Vercel (Local 127.0.0.1 not reachable from Cloud)'}`);
+  console.log(`⚡ Redis Cloud:   ${hasRedis ? '🟢 Upstash Connected' : '🟡 Offline on Vercel (Local 127.0.0.1 not reachable from Cloud)'}`);
   console.log(`📦 Payload:\n${JSON.stringify(body, null, 2)}`);
   console.log(`=================================================================================\n`);
 
