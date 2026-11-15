@@ -68,11 +68,11 @@ export class TelegramService {
    */
   private static getMainMenuKeyboard(): any {
     const dashBtn = this.makeWebButton('🚀 Open Dashboard', '/dashboard', 'cmd_open_dashboard');
-    const miniAppUrl = `${config.frontendUrl}/miniapp`;
+    const miniAppBtn = this.makeWebButton('📱 Launch Mini App', '/miniapp', 'cb_miniapp');
     return {
       inline_keyboard: [
         [
-          { text: '📱 Launch Mini App', web_app: { url: miniAppUrl } },
+          miniAppBtn,
           { text: '🎁 Mystery Vault', callback_data: 'cb_mystery_box' },
         ],
         [
@@ -664,9 +664,22 @@ export class TelegramService {
       await TelegramService.handleOpenBoxAction(ctx);
     });
 
-    bot.action('cb_miniapp', async (ctx) => {
+    bot.action(['cb_miniapp', 'cb_open_miniapp_info'], async (ctx) => {
       await ctx.answerCbQuery();
-      await TelegramService.sendMiniApp(ctx);
+      const miniAppUrl = `${config.frontendUrl}/miniapp`;
+      await TelegramService.safeReply(
+        ctx,
+        `📱 <b>TeleGrowth Mobile Mini App 2.0</b>\n\nExperience the next-gen viral referral dashboard directly inside Telegram:\n\n🌐 <code>${miniAppUrl}</code>\n\n<i>Note: On HTTPS production domains, Telegram launches this as an embedded full-screen Mini App!</i>`,
+        {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🎁 Open Mystery Box', callback_data: 'cb_open_box' }],
+              [{ text: '🔗 My Invite Link', callback_data: 'cb_get_link' }],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        }
+      );
     });
 
     bot.action('cb_custom_bot', async (ctx) => {
@@ -1861,6 +1874,7 @@ export class TelegramService {
    */
   static async sendMiniApp(ctx: Context): Promise<void> {
     const miniAppUrl = `${config.frontendUrl}/miniapp`;
+    const appBtn = this.makeWebButton('🚀 Launch Mini App', '/miniapp', 'cb_open_miniapp_info');
     const text =
       `📱 <b>TeleGrowth Mobile Mini App 2.0</b>\n\n` +
       `Experience the next-gen viral referral dashboard directly inside Telegram with real-time haptic feedback, live mystery vaults, and instant leaderboards:\n\n` +
@@ -1869,7 +1883,7 @@ export class TelegramService {
     await this.safeReply(ctx, text, {
       reply_markup: {
         inline_keyboard: [
-          [{ text: '🚀 Launch Mini App', web_app: { url: miniAppUrl } }],
+          [appBtn],
           [{ text: '🎁 Open Mystery Box', callback_data: 'cb_open_box' }],
           [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
         ],
@@ -1887,7 +1901,7 @@ export class TelegramService {
 
       const { GamificationService } = await import('../gamification/gamification.service');
       const profile = await GamificationService.getUserProfile(tgId);
-      const miniAppUrl = `${config.frontendUrl}/miniapp`;
+      const appBtn = this.makeWebButton('📱 Open in Mini App', '/miniapp', 'cb_open_miniapp_info');
 
       const text =
         `🎁 <b>TeleGrowth Mystery Vault & Loot Chests</b>\n\n` +
@@ -1907,7 +1921,7 @@ export class TelegramService {
         buttons.push([{ text: `🎁 Open Mystery Chest (${profile.unopenedCount} ready)`, callback_data: 'cb_open_box' }]);
       }
       buttons.push([
-        { text: '📱 Open in Mini App', web_app: { url: miniAppUrl } },
+        appBtn,
         { text: '🔗 Get Invite Link', callback_data: 'cb_get_link' },
       ]);
       buttons.push([{ text: '◀️ Main Menu', callback_data: 'cb_menu' }]);
