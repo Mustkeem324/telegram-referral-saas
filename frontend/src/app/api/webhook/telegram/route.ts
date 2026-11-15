@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { completeAuthSession } from '../../../../lib/auth-sessions';
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9221628840:AAH7Kwc4Ct210wry3nfUSXvSiQwzRV0he6c';
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'TeleGrowthnxbot';
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // 1. Handle incoming text messages
+    // 1. Handle incoming text messages & new chat members
     if (body.message) {
       const msg = body.message;
       const chatId = msg.chat?.id;
@@ -143,11 +144,114 @@ export async function POST(req: NextRequest) {
       const from = msg.from || {};
       const firstName = from.first_name || from.username || 'Creator';
       const userId = from.id;
+      const isGroup = msg.chat?.type === 'group' || msg.chat?.type === 'supergroup';
 
-      console.log(`👤 [TG_MESSAGE] From: ${firstName} (ID: ${userId}) | Chat: ${chatId} | Text: "${text}"`);
+      console.log(`👤 [TG_MESSAGE] From: ${firstName} (ID: ${userId}) | Chat: ${chatId} (${msg.chat?.type}) | Text: "${text}"`);
 
-      // Command: /start
-      if (text.startsWith('/start')) {
+      // 1.A Handle bot being added to a group
+      if (msg.new_chat_members && Array.isArray(msg.new_chat_members)) {
+        const isBotAdded = msg.new_chat_members.some((m: any) => m.username === BOT_USERNAME);
+        if (isBotAdded) {
+          console.log(`🎉 [TG_BOT_ADDED] Added to group: ${msg.chat?.title} (${chatId})`);
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text:
+              `🎉 <b>Thank you for adding TeleGrowth to ${escapeHtml(msg.chat?.title || 'the group')}!</b>\n\n` +
+              `🚀 <b>To activate automatic viral join tracking:</b>\n` +
+              `1. Promote <b>@${BOT_USERNAME}</b> to <b>Admin</b>.\n` +
+              `2. Grant the permission: <i>"Invite Users via Link"</i>.\n` +
+              `3. Members can now type /link to get their personal tracking links!`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '📱 Launch Mini-App', web_app: { url: `${APP_URL}/miniapp` } }],
+                [{ text: '🖥 Creator Studio', url: `${APP_URL}/dashboard` }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        }
+      }
+
+      // 1.B Parse Commands cleanly (supports /start, /start@TeleGrowthnxbot, /link, /link@TeleGrowthnxbot, etc.)
+      const cleanText = text.replace(new RegExp(`@${BOT_USERNAME}\\b`, 'gi'), '').trim();
+      const parts = cleanText.split(' ');
+      const command = (parts[0] || '').toLowerCase();
+      const payload = parts.slice(1).join(' ').trim();
+
+      // Handle Web Direct Login Session: /start auth_...
+      if (command === '/start' && payload.startsWith('auth_')) {
+        console.log(`🔐 [AUTH_DIRECT_LOGIN] Completing web auth session: ${payload} for user ${userId}`);
+        completeAuthSession(payload, {
+          id: userId,
+          first_name: firstName,
+          last_name: from.last_name,
+          username: from.username,
+        });
+
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text: 
+            `🔐 <b>Authentication Confirmed!</b>\n\n` +
+            `Welcome, <b>${escapeHtml(firstName)}</b>! You are now securely logged into <b>TeleGrowth</b>.\n\n` +
+            `Your browser dashboard will update automatically, or visit:\n` +
+            `🌐 <code>${APP_URL}/dashboard</code>`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🚀 Open Dashboard', url: `${APP_URL}/dashboard` }],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Group-specific command handling
+      if (isGroup) {
+        if (command === '/start' || command === '/help') {
+          console.log(`👥 [CMD_GROUP_START] Group ${chatId} started by ${userId}`);
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text:
+              `👋 <b>TeleGrowth Referral Engine is ACTIVE in ${escapeHtml(msg.chat?.title || 'this group')}!</b>\n\n` +
+              `👥 <b>For Members:</b>\n` +
+              `Run /link to get your personal invite link for this community and earn points!\n\n` +
+              `🛡️ <b>For Group Admins:</b>\n` +
+              `Ensure <b>@${BOT_USERNAME}</b> is an <b>Admin</b> with <i>"Invite Users via Link"</i> permission enabled to attribute joins.\n\n` +
+              `<i>Commands: /link, /stats, /leaderboard, /rewards, /rules</i>`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔗 Get My Group Invite Link', url: `https://t.me/${BOT_USERNAME}?start=link` }],
+                [{ text: '📱 Open Mini-App', web_app: { url: `${APP_URL}/miniapp` } }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        }
+
+        if (command === '/link' || command === '/invitelink') {
+          const groupLink = `https://t.me/${BOT_USERNAME}?start=ref_${userId}`;
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text:
+              `🔗 <b>Personal Invite Link for ${escapeHtml(firstName)}:</b>\n\n` +
+              `<code>${groupLink}</code>\n\n` +
+              `Share this link to invite friends into this group and earn +10 Points (${from.is_premium ? '⭐ +20 Points Premium' : '+20 Points for Premium'}) per verified join!`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '📤 Share Link', url: `https://t.me/share/url?url=${encodeURIComponent(groupLink)}` }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        }
+      }
+
+      // Standard Command: /start (in private chat or fallback)
+      if (command === '/start') {
         console.log(`🚀 [CMD_START] User ${userId} requested /start`);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
@@ -159,7 +263,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /link or /invitelink
-      if (text === '/link' || text === '/invitelink') {
+      if (command === '/link' || command === '/invitelink') {
         const link = `https://t.me/${BOT_USERNAME}?start=ref_${userId}`;
         const shareText = encodeURIComponent(`Join TeleGrowth with my exclusive link to earn viral rewards: ${link}`);
         await callTelegramApi('sendMessage', {
@@ -183,7 +287,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /stats or /mystats or /profile
-      if (text === '/stats' || text === '/mystats' || text === '/profile') {
+      if (command === '/stats' || command === '/mystats' || command === '/profile') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -213,7 +317,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /leaderboard or /top
-      if (text === '/leaderboard' || text === '/top') {
+      if (command === '/leaderboard' || command === '/top') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -236,7 +340,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /box or /chest or /mysterybox
-      if (text === '/box' || text === '/chest' || text === '/mysterybox') {
+      if (command === '/box' || command === '/chest' || command === '/mysterybox') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -256,7 +360,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /streak
-      if (text === '/streak') {
+      if (command === '/streak') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -275,7 +379,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /howitworks or /guide or /tutorial
-      if (text === '/howitworks' || text === '/guide' || text === '/tutorial') {
+      if (command === '/howitworks' || command === '/guide' || command === '/tutorial') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -310,7 +414,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /rewards or /milestones
-      if (text === '/rewards' || text === '/milestones') {
+      if (command === '/rewards' || command === '/milestones') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -337,7 +441,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /channels or /connect
-      if (text === '/channels' || text === '/connect') {
+      if (command === '/channels' || command === '/connect') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -359,7 +463,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /rules or /antifraud
-      if (text === '/rules' || text === '/antifraud') {
+      if (command === '/rules' || command === '/antifraud') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -384,7 +488,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /faq
-      if (text === '/faq') {
+      if (command === '/faq') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -410,7 +514,7 @@ export async function POST(req: NextRequest) {
       }
 
       // Command: /help
-      if (text === '/help') {
+      if (command === '/help') {
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: 
@@ -431,6 +535,22 @@ export async function POST(req: NextRequest) {
           reply_markup: {
             inline_keyboard: [
               [{ text: '◀️ Back to Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        });
+        return NextResponse.json({ ok: true });
+      }
+
+      // Command: /app or /miniapp
+      if (command === '/app' || command === '/miniapp') {
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text: `📱 <b>TeleGrowth Viral Mini-App 2.0</b>\n\nOpen your full WebApp interface with 1-tap sharing, real-time leaderboard, and mystery box rewards:`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🚀 Launch Mini-App', web_app: { url: `${APP_URL}/miniapp` } }],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
             ],
           },
         });
