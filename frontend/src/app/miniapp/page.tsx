@@ -35,6 +35,8 @@ interface GamificationProfile {
   }>;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
 export default function TelegramMiniApp() {
   const [tgUser, setTgUser] = useState<TelegramUser | null>(null);
   const [copied, setCopied] = useState(false);
@@ -98,7 +100,7 @@ export default function TelegramMiniApp() {
   const loadUserData = async (telegramId: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`http://localhost:4000/api/gamification/public-profile/${telegramId}`);
+      const res = await fetch(`${API_BASE}/gamification/public-profile/${telegramId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.profile) {
@@ -157,7 +159,7 @@ export default function TelegramMiniApp() {
     setOpeningBox(true);
 
     try {
-      const res = await fetch(`http://localhost:4000/api/gamification/public-open-box`, {
+      const res = await fetch(`${API_BASE}/gamification/public-open-box`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegramId: String(tgUser.id) }),

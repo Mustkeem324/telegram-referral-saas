@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 
 export default function AICopilotDrawer() {
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'copywriter' | 'insights'>('chat');
   const [messages, setMessages] = useState<Array<{ sender: 'ai' | 'user'; text: string }>>([
@@ -34,7 +35,7 @@ export default function AICopilotDrawer() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:4000/api/ai/copilot/chat', {
+      const res = await fetch(`${API_BASE}/ai/copilot/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +72,7 @@ export default function AICopilotDrawer() {
   const generateCopy = async () => {
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:4000/api/ai/copilot/generate-copy', {
+      const res = await fetch(`${API_BASE}/ai/copilot/generate-copy`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
