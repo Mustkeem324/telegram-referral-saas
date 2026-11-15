@@ -163,12 +163,12 @@ function getMainMenuKeyboard() {
         { text: '🛡️ Anti-Fraud Rules', callback_data: 'cb_rules' },
       ],
       [
+        { text: '🆔 Get ID / Inspect', callback_data: 'cb_get_id' },
         { text: '🤖 Custom Bot Manager', callback_data: 'cb_custom_bot' },
-        { text: '📢 Add Bot to Channel', callback_data: 'cb_channels' },
       ],
       [
+        { text: '📢 Add Bot to Channel', callback_data: 'cb_channels' },
         { text: '➕ Create Campaign', callback_data: 'cmd_create_campaign' },
-        { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
       ],
       [
         { text: '🚀 Open Dashboard', url: `${APP_URL}/dashboard` },
@@ -293,7 +293,64 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 1.B Parse Commands cleanly (supports /start, /start@TeleGrowthnxbot, /link, /link@TeleGrowthnxbot, etc.)
+      // 1.B Handle Forwarded Messages (Auto-detect channel/chat/user ID, even for private channels!)
+      const forwardedChat =
+        msg.forward_from_chat ||
+        (msg.forward_origin?.type === 'channel' || msg.forward_origin?.type === 'chat'
+          ? msg.forward_origin.chat
+          : null);
+      const forwardedUser =
+        msg.forward_from ||
+        (msg.forward_origin?.type === 'user' ? msg.forward_origin.sender_user : null);
+
+      if (forwardedChat || forwardedUser) {
+        if (forwardedChat) {
+          console.log(`📬 [TG_FORWARD_CHAT] Detected chat: "${forwardedChat.title}" (ID: ${forwardedChat.id})`);
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            reply_to_message_id: msg.message_id,
+            allow_sending_without_reply: true,
+            text:
+              `📬 <b>Forwarded Channel / Chat Detected!</b>\n\n` +
+              `📢 <b>Title:</b> ${escapeHtml(forwardedChat.title || 'Channel')}\n` +
+              `💬 <b>Chat ID:</b> <code>${forwardedChat.id}</code>\n` +
+              `📱 <b>Type:</b> <code>${forwardedChat.type || 'channel'}</code>\n` +
+              `🏷️ <b>Username:</b> ${forwardedChat.username ? `@${escapeHtml(forwardedChat.username)}` : '<i>Private (No public @username)</i>'}\n\n` +
+              `💡 <i>Tap the Chat ID above to copy it to your clipboard. You can paste this ID in Creator Studio to connect this channel!</i>`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🖥 Open Channel Studio', url: `${APP_URL}/channels` }],
+                [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        } else if (forwardedUser) {
+          console.log(`👤 [TG_FORWARD_USER] Detected user: "${forwardedUser.first_name}" (ID: ${forwardedUser.id})`);
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            reply_to_message_id: msg.message_id,
+            allow_sending_without_reply: true,
+            text:
+              `👤 <b>Forwarded User Profile Detected:</b>\n\n` +
+              `👤 <b>Name:</b> ${escapeHtml(forwardedUser.first_name || '')} ${escapeHtml(forwardedUser.last_name || '')}\n` +
+              `🔑 <b>User ID:</b> <code>${forwardedUser.id}</code>\n` +
+              `🏷️ <b>Username:</b> ${forwardedUser.username ? `@${escapeHtml(forwardedUser.username)}` : '<i>None set</i>'}\n` +
+              `⭐ <b>Premium:</b> ${forwardedUser.is_premium ? 'Yes ⭐' : 'No'}\n\n` +
+              `💡 <i>Tap the User ID above to copy it to clipboard.</i>`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        }
+      }
+
+      // 1.C Parse Commands cleanly (supports /start, /start@TeleGrowthnxbot, /link, /link@TeleGrowthnxbot, etc.)
       const cleanText = text.replace(new RegExp(`@${BOT_USERNAME}\\b`, 'gi'), '').trim();
       const parts = cleanText.split(' ');
       const command = (parts[0] || '').toLowerCase();
@@ -455,6 +512,142 @@ export async function POST(req: NextRequest) {
           },
         });
         return NextResponse.json({ ok: true });
+      }
+
+      // Command: /id, /myid, /chatid, /getid, /whoami, /channel, /check (Get ID & Inspect Channels by Username)
+      if (
+        command === '/id' ||
+        command === '/myid' ||
+        command === '/chatid' ||
+        command === '/getid' ||
+        command === '/whoami' ||
+        command === '/channel' ||
+        command === '/check'
+      ) {
+        // If a target @username or ID is specified: e.g. /id @channelname or /channel @groupname
+        if (payload) {
+          const target = payload.split(' ')[0].trim();
+          console.log(`🔍 [CMD_INSPECT_CHAT] Target: ${target}`);
+
+          const chatRes = await callTelegramApi('getChat', { chat_id: target });
+          if (chatRes?.ok && chatRes.result) {
+            const c = chatRes.result;
+            // Also fetch member count if available
+            let memberCountText = '';
+            try {
+              const countRes = await callTelegramApi('getChatMemberCount', { chat_id: c.id });
+              if (countRes?.ok && countRes.result) {
+                memberCountText = `👥 <b>Subscribers / Members:</b> <b>${Number(countRes.result).toLocaleString()}</b>\n`;
+              }
+            } catch (e) {}
+
+            // Check if bot is admin in that chat
+            let botAdminStatus = '';
+            try {
+              const botMemberRes = await callTelegramApi('getChatMember', { chat_id: c.id, user_id: 9221628840 });
+              if (botMemberRes?.ok && botMemberRes.result) {
+                const status = botMemberRes.result.status;
+                if (status === 'administrator' || status === 'creator') {
+                  botAdminStatus = `🛡️ <b>Bot Role:</b> <b>Administrator ✅</b>\n`;
+                } else if (status === 'member') {
+                  botAdminStatus = `🛡️ <b>Bot Role:</b> Member (Not Admin ⚠️)\n`;
+                } else {
+                  botAdminStatus = `🛡️ <b>Bot Role:</b> Not Member ❌\n`;
+                }
+              }
+            } catch (e) {}
+
+            await callTelegramApi('sendMessage', {
+              chat_id: chatId,
+              reply_to_message_id: isGroup ? msg.message_id : undefined,
+              allow_sending_without_reply: true,
+              text:
+                `📢 <b>Telegram Channel / Chat Inspector:</b>\n\n` +
+                `🏷️ <b>Title:</b> ${escapeHtml(c.title || c.first_name || 'Community')}\n` +
+                `💬 <b>Chat ID:</b> <code>${c.id}</code>\n` +
+                `📱 <b>Type:</b> <code>${c.type}</code>\n` +
+                `🌐 <b>Username:</b> ${c.username ? `@${escapeHtml(c.username)}` : '<i>Private (No public @username)</i>'}\n` +
+                memberCountText +
+                botAdminStatus +
+                (c.description ? `📝 <b>Description:</b>\n<i>${escapeHtml(c.description)}</i>\n\n` : '\n') +
+                `💡 <i>Tap the Chat ID above to copy it to clipboard.</i>`,
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '🖥 Connect in Studio', url: `${APP_URL}/channels` }],
+                  [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+                ],
+              },
+            });
+            return NextResponse.json({ ok: true });
+          } else {
+            // Target not found or private
+            await callTelegramApi('sendMessage', {
+              chat_id: chatId,
+              reply_to_message_id: isGroup ? msg.message_id : undefined,
+              allow_sending_without_reply: true,
+              text:
+                `❌ <b>Could not inspect chat "${escapeHtml(target)}":</b>\n\n` +
+                `<i>${escapeHtml(chatRes?.description || 'Chat not found or bot does not have access.')}</i>\n\n` +
+                `<b>💡 How to find any Private Channel ID:</b>\n` +
+                `1. Forward any message or post from that private channel into this bot.\n` +
+                `2. Or add <b>@${BOT_USERNAME}</b> as an Admin to the private channel!`,
+              parse_mode: 'HTML',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '➕ Add Bot to Channel', url: `https://t.me/${BOT_USERNAME}?startchannel=botstart&admin=invite_users` }],
+                  [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+                ],
+              },
+            });
+            return NextResponse.json({ ok: true });
+          }
+        }
+
+        // No payload: User requested their own ID & current Chat ID
+        if (isGroup) {
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            reply_to_message_id: msg.message_id,
+            allow_sending_without_reply: true,
+            text:
+              `🆔 <b>Group & User Identity:</b>\n\n` +
+              `👥 <b>Group Title:</b> ${escapeHtml(msg.chat?.title || 'This Group')}\n` +
+              `💬 <b>Group Chat ID:</b> <code>${chatId}</code>\n` +
+              `📱 <b>Chat Type:</b> <code>${msg.chat?.type}</code>\n` +
+              `🏷️ <b>Group Username:</b> ${msg.chat?.username ? `@${escapeHtml(msg.chat?.username)}` : '<i>Private Group</i>'}\n\n` +
+              `👤 <b>Sender Name:</b> ${escapeHtml(firstName)}\n` +
+              `🔑 <b>Sender User ID:</b> <code>${userId}</code>\n\n` +
+              `💡 <i>Tap any ID to copy to clipboard.</i>`,
+            parse_mode: 'HTML',
+          });
+          return NextResponse.json({ ok: true });
+        } else {
+          // Private chat ID telemetry
+          await callTelegramApi('sendMessage', {
+            chat_id: chatId,
+            text:
+              `🆔 <b>Your Telegram Identity:</b>\n\n` +
+              `👤 <b>Full Name:</b> ${escapeHtml(firstName)} ${escapeHtml(from.last_name || '')}\n` +
+              `🏷️ <b>Username:</b> ${from.username ? `@${escapeHtml(from.username)}` : '<i>None set</i>'}\n` +
+              `🔑 <b>Your User ID:</b> <code>${userId}</code>\n` +
+              `💬 <b>Private Chat ID:</b> <code>${chatId}</code>\n` +
+              `📱 <b>Chat Type:</b> <code>private</code>\n` +
+              `⭐ <b>Telegram Premium:</b> ${from.is_premium ? 'Yes ⭐' : 'No'}\n\n` +
+              `<b>🔍 Useful ID Tools:</b>\n` +
+              `• <b>Check any channel/group:</b> Type <code>/id @username</code> or <code>/channel @username</code>\n` +
+              `• <b>Get Private Channel ID:</b> Forward any post from that channel into this chat!\n\n` +
+              `💡 <i>Tap any ID above to copy to clipboard.</i>`,
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🖥 Creator Studio', url: `${APP_URL}/dashboard` }],
+                [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+              ],
+            },
+          });
+          return NextResponse.json({ ok: true });
+        }
       }
 
       // Command: /stats or /mystats or /profile (100% Real Database Data)
@@ -987,6 +1180,31 @@ export async function POST(req: NextRequest) {
           reply_markup: {
             inline_keyboard: [
               [{ text: '📱 Open Mini-App Vault', web_app: { url: `${APP_URL}/miniapp` } }],
+              [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
+            ],
+          },
+        });
+      }
+      // Action: cb_get_id
+      else if (data === 'cb_get_id') {
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text:
+            `🆔 <b>Your Telegram Identity & Inspector:</b>\n\n` +
+            `👤 <b>Name:</b> ${escapeHtml(firstName)} ${escapeHtml(from.last_name || '')}\n` +
+            `🏷️ <b>Username:</b> ${from.username ? `@${escapeHtml(from.username)}` : '<i>None set</i>'}\n` +
+            `🔑 <b>User ID:</b> <code>${userId}</code>\n` +
+            `💬 <b>Chat ID:</b> <code>${chatId}</code>\n` +
+            `⭐ <b>Telegram Premium:</b> ${from.is_premium ? 'Yes ⭐' : 'No'}\n\n` +
+            `<b>🔍 How to find Channel / Group IDs:</b>\n` +
+            `• <b>By Username:</b> Send <code>/id @channel_username</code> or <code>/channel @channel_username</code>\n` +
+            `• <b>Private Channel:</b> Forward any message or post from the channel into this bot!\n` +
+            `• <b>In Groups:</b> Run <code>/id</code> directly in the group to get the group chat ID!\n\n` +
+            `💡 <i>Tap any ID above to copy to clipboard.</i>`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🖥 Creator Studio', url: `${APP_URL}/dashboard` }],
               [{ text: '◀️ Main Menu', callback_data: 'cb_menu' }],
             ],
           },
