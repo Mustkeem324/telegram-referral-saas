@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { completeAuthSession } from '../../../../lib/auth-sessions';
+import { AsyncLocalStorage } from 'async_hooks';
+import { completeAuthSession } from '@/lib/auth-sessions';
+import {
+  getOrCreateUser,
+  recordRealReferral,
+  getRealUserStats,
+  getRealLeaderboard,
+  getRealMilestoneProgress,
+  UserModel,
+} from '@/lib/db';
+
+const botTokenStorage = new AsyncLocalStorage<string>();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '9221628840:AAH7Kwc4Ct210wry3nfUSXvSiQwzRV0he6c';
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'TeleGrowthnxbot';
@@ -17,9 +28,104 @@ function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
-// Helper to call Telegram Bot API
+// Real User Stats Message Builder (100% Real Database Telemetry)
+async function getStatsMessage(userId: number | string, firstName: string, isPremium: boolean): Promise<string> {
+  const stats = await getRealUserStats(userId);
+  return (
+    `📊 <b>TeleGrowth Performance Profile</b>\n\n` +
+    `👤 <b>Creator:</b> ${escapeHtml(firstName)} (<code>${userId}</code>)\n` +
+    `⭐ <b>Tier:</b> ${isPremium ? 'VIP Gold (2x Boost)' : 'Standard Member'}\n\n` +
+    `📈 <b>Referral Telemetry (Live Data):</b>\n` +
+    `• Total Invites: <b>${stats.totalInvites}</b>\n` +
+    `• Verified Members: <b>${stats.verifiedInvites}</b> (${stats.retentionRate} Retention)\n` +
+    `• In Anti-Fraud Hold: <b>${stats.holdInvites}</b>\n` +
+    `• Earned Points: <b>${stats.points} pts</b>\n` +
+    `• Community Rank: <b>${stats.communityRank}</b>\n` +
+    `• Daily Streak: <b>${stats.streakDays} Day${stats.streakDays > 1 ? 's' : ''} Active</b> 🔥\n` +
+    `• Unopened Chests: <b>${stats.mysteryBoxes} Mystery Box${stats.mysteryBoxes === 1 ? '' : 'es'}</b> 🎁` +
+    (stats.totalInvites === 0
+      ? `\n\n💡 <i>You have 0 referrals recorded. Tap 'My Invite Link' below to invite friends and top the community leaderboard!</i>`
+      : '')
+  );
+}
+
+// Real Leaderboard Message Builder (NO DEMO DATA)
+async function getLeaderboardMessage(): Promise<string> {
+  const { entries } = await getRealLeaderboard(10);
+  let text = `🏆 <b>TeleGrowth Top Referrers Leaderboard</b>\n\n`;
+  if (entries.length === 0) {
+    text += `<i>No community referrers recorded yet. Share your invite link (/link) and be the first to top the leaderboard!</i>`;
+  } else {
+    text += entries
+      .map((e) => {
+        const medal = e.rank === 1 ? '🥇 1.' : e.rank === 2 ? '🥈 2.' : e.rank === 3 ? '🥉 3.' : `${e.rank}.`;
+        const userTag = e.username ? ` (@${escapeHtml(e.username)})` : '';
+        return `${medal} <b>${escapeHtml(e.name)}</b>${userTag} — <b>${e.invites}</b> invite${e.invites === 1 ? '' : 's'} (${e.points.toLocaleString()} pts)${e.isPremium ? ' ⭐' : ''}`;
+      })
+      .join('\n');
+    text += `\n\n<i>Rankings update continuously with verified joins.</i>`;
+  }
+  return text;
+}
+
+// Real Milestone Rewards Message Builder
+async function getRewardsMessage(userId: number | string): Promise<string> {
+  const prog = await getRealMilestoneProgress(userId);
+  return (
+    `🎁 <b>Milestone Rewards & Prize Vault:</b>\n\n` +
+    `Reach verified join milestones to instantly unlock prizes:\n\n` +
+    `🥉 <b>Tier 1 (5 Verified Invites):</b>\n` +
+    `• Status: ${prog.tier1.completed ? '<b>UNLOCKED ✅</b>' : `<i>${prog.tier1.remaining} Invites Remaining (${prog.verifiedCount}/5)</i>`}\n` +
+    `• Reward: Exclusive Alpha Community VIP Access\n\n` +
+    `🥈 <b>Tier 2 (15 Verified Invites):</b>\n` +
+    `• Status: ${prog.tier2.completed ? '<b>UNLOCKED ✅</b>' : `<i>${prog.tier2.remaining} Invites Remaining (${prog.verifiedCount}/15)</i>`}\n` +
+    `• Reward: $25 Telegram Stars Voucher\n\n` +
+    `🥇 <b>Tier 3 (50 Verified Invites):</b>\n` +
+    `• Status: ${prog.tier3.completed ? '<b>UNLOCKED ✅</b>' : `<i>${prog.tier3.remaining} Invites Remaining (${prog.verifiedCount}/50)</i>`}\n` +
+    `• Reward: Lifetime Pro SaaS Pass & Legendary Mystery Box`
+  );
+}
+
+// Real Mystery Box Opener
+async function openMysteryBox(userId: number | string, firstName: string): Promise<{ success: boolean; text: string }> {
+  const user = await UserModel.findOne({ telegram_id: String(userId) });
+  const boxCount = user?.mystery_boxes || 0;
+
+  if (boxCount <= 0) {
+    return {
+      success: false,
+      text:
+        `🎁 <b>Mystery Vault</b>\n\n` +
+        `You currently have <b>0 Unopened Mystery Boxes</b>.\n\n` +
+        `✨ <b>How to earn Mystery Boxes:</b>\n` +
+        `• Earn <b>+1 Mystery Box</b> for every 3 friends you invite!\n` +
+        `• Maintain continuous daily activity streaks.\n\n` +
+        `Run /link to get your referral link and invite friends!`,
+    };
+  }
+
+  if (user) {
+    user.mystery_boxes -= 1;
+    user.points += 50;
+    await user.save();
+  }
+
+  return {
+    success: true,
+    text:
+      `🎁 <b>MYSTERY VAULT UNLOCKED!</b> ⚡\n\n` +
+      `Congratulations <b>${escapeHtml(firstName)}</b>!\n` +
+      `You opened 1 Mystery Box and unlocked:\n` +
+      `<b>⭐ +50 Bonus Viral Points!</b>\n\n` +
+      `Remaining Boxes: <b>${user?.mystery_boxes || 0}</b>\n` +
+      `Updated Balance: <b>${user?.points || 0} pts</b>`,
+  };
+}
+
+// Helper to call Telegram Bot API (supports both default and custom bot tokens)
 async function callTelegramApi(method: string, payload: Record<string, any>) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
+  const activeToken = botTokenStorage.getStore() || BOT_TOKEN;
+  const url = `https://api.telegram.org/bot${activeToken}/${method}`;
   console.log(`📤 [TG_API_CALL] Calling method: ${method}`, JSON.stringify(payload));
   try {
     const res = await fetch(url, {
@@ -114,28 +220,32 @@ export async function GET() {
 
 // POST handler for Telegram Webhook Updates
 export async function POST(req: NextRequest) {
-  const timestamp = new Date().toISOString();
-  let body: any = null;
+  const urlObj = new URL(req.url);
+  const activeToken = urlObj.searchParams.get('bot_token') || urlObj.searchParams.get('custom_token') || BOT_TOKEN;
 
-  try {
-    body = await req.json();
-  } catch (parseErr: any) {
-    console.error(`❌ [TG_PARSE_ERROR] Invalid JSON payload received:`, parseErr?.message);
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
-  }
+  return botTokenStorage.run(activeToken, async () => {
+    const timestamp = new Date().toISOString();
+    let body: any = null;
 
-  const updateId = body?.update_id;
-  console.log(`\n==================== [TELEGRAM INCOMING UPDATE #${updateId}] ====================`);
-  console.log(`⏰ Timestamp: ${timestamp}`);
-  console.log(`🤖 Bot Node: @${BOT_USERNAME} (Vercel Cloud Serverless)`);
-  console.log(`📦 Payload:\n${JSON.stringify(body, null, 2)}`);
-  console.log(`=================================================================================\n`);
+    try {
+      body = await req.json();
+    } catch (parseErr: any) {
+      console.error(`❌ [TG_PARSE_ERROR] Invalid JSON payload received:`, parseErr?.message);
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
 
-  if (!body) {
-    return NextResponse.json({ ok: false, error: 'Empty update' }, { status: 400 });
-  }
+    const updateId = body?.update_id;
+    console.log(`\n==================== [TELEGRAM INCOMING UPDATE #${updateId}] ====================`);
+    console.log(`⏰ Timestamp: ${timestamp}`);
+    console.log(`🤖 Bot Node: @${BOT_USERNAME} (Vercel Cloud Serverless)`);
+    console.log(`📦 Payload:\n${JSON.stringify(body, null, 2)}`);
+    console.log(`=================================================================================\n`);
 
-  try {
+    if (!body) {
+      return NextResponse.json({ ok: false, error: 'Empty update' }, { status: 400 });
+    }
+
+    try {
     // 1. Handle incoming text messages & new chat members
     if (body.message) {
       const msg = body.message;
@@ -147,6 +257,16 @@ export async function POST(req: NextRequest) {
       const isGroup = msg.chat?.type === 'group' || msg.chat?.type === 'supergroup';
 
       console.log(`👤 [TG_MESSAGE] From: ${firstName} (ID: ${userId}) | Chat: ${chatId} (${msg.chat?.type}) | Text: "${text}"`);
+
+      // Register or update real user in MongoDB Atlas
+      if (userId) {
+        getOrCreateUser(userId, {
+          first_name: firstName,
+          last_name: from.last_name,
+          username: from.username,
+          is_premium: from.is_premium,
+        }).catch((uErr) => console.error('Error persisting user:', uErr));
+      }
 
       // 1.A Handle bot being added to a group
       if (msg.new_chat_members && Array.isArray(msg.new_chat_members)) {
@@ -266,6 +386,44 @@ export async function POST(req: NextRequest) {
       // Standard Command: /start (in private chat or fallback)
       if (command === '/start') {
         console.log(`🚀 [CMD_START] User ${userId} requested /start`);
+
+        // Handle referral link joins: /start ref_123456
+        if (payload.startsWith('ref_')) {
+          const referrerId = payload.replace('ref_', '').trim();
+          console.log(`🔗 [REFERRAL_JOIN] User ${userId} joined via referrer ${referrerId}`);
+          try {
+            const { isNew, referrer, pointsAwarded } = await recordRealReferral(referrerId, userId, {
+              first_name: firstName,
+              last_name: from.last_name,
+              username: from.username,
+              is_premium: from.is_premium,
+            });
+
+            if (isNew && referrer) {
+              // Notify the referrer in real-time
+              await callTelegramApi('sendMessage', {
+                chat_id: referrerId,
+                text:
+                  `🎉 <b>New Referral Alert!</b>\n\n` +
+                  `<b>${escapeHtml(firstName)}</b>${from.username ? ` (@${escapeHtml(from.username)})` : ''} joined TeleGrowth with your invite link!\n\n` +
+                  `• Points Awarded: <b>+${pointsAwarded} pts</b> ${from.is_premium ? '⭐ (2x Premium Active)' : ''}\n` +
+                  `• Verified Referrals: <b>${referrer.verified_invites}</b>\n` +
+                  `• Total Points Balance: <b>${referrer.points} pts</b>\n\n` +
+                  `Keep sharing to unlock milestone prize vaults and mystery boxes!`,
+                parse_mode: 'HTML',
+                reply_markup: {
+                  inline_keyboard: [
+                    [{ text: '📊 View My Stats', callback_data: 'cb_my_stats' }],
+                    [{ text: '🏆 Leaderboard', callback_data: 'cb_leaderboard' }],
+                  ],
+                },
+              });
+            }
+          } catch (refErr) {
+            console.error('Error handling referral join:', refErr);
+          }
+        }
+
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
           text: getWelcomeMessage(firstName),
@@ -299,22 +457,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Command: /stats or /mystats or /profile
+      // Command: /stats or /mystats or /profile (100% Real Database Data)
       if (command === '/stats' || command === '/mystats' || command === '/profile') {
+        const statsText = await getStatsMessage(userId, firstName, !!from.is_premium);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `📊 <b>TeleGrowth Performance Profile</b>\n\n` +
-            `👤 <b>Creator:</b> ${escapeHtml(firstName)} (<code>${userId}</code>)\n` +
-            `⭐ <b>Tier:</b> ${from.is_premium ? 'VIP Gold (2x Boost)' : 'Standard Member'}\n\n` +
-            `📈 <b>Referral Telemetry:</b>\n` +
-            `• Total Invites: <b>12</b>\n` +
-            `• Verified Members: <b>10</b> (83.3% Retention)\n` +
-            `• In Anti-Fraud Hold: <b>2</b> (48h verification)\n` +
-            `• Earned Points: <b>340 pts</b>\n` +
-            `• Community Rank: <b>#14</b>\n` +
-            `• Daily Streak: <b>4 Days Active</b> 🔥\n` +
-            `• Unopened Chests: <b>1 Mystery Box</b> 🎁`,
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+          allow_sending_without_reply: true,
+          text: statsText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -329,18 +479,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Command: /leaderboard or /top
+      // Command: /leaderboard or /top (NO DEMO DATA)
       if (command === '/leaderboard' || command === '/top') {
+        const lbText = await getLeaderboardMessage();
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🏆 <b>TeleGrowth Top Referrers Leaderboard</b>\n\n` +
-            `🥇 <b>1. Alex_Crypto</b> — 452 invites (4,520 pts) 👑\n` +
-            `🥈 <b>2. Elena_Dev</b> — 318 invites (3,180 pts) 🥈\n` +
-            `🥉 <b>3. Satoshi99</b> — 287 invites (2,870 pts) 🥉\n` +
-            `4. Web3_Hunter — 190 invites (1,900 pts)\n` +
-            `5. TelegramAlpha — 145 invites (1,450 pts)\n\n` +
-            `<i>Rankings update continuously with anti-fraud verification.</i>`,
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+          allow_sending_without_reply: true,
+          text: lbText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -352,15 +498,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Command: /box or /chest or /mysterybox
+      // Command: /box or /chest or /mysterybox (Real Box Opener)
       if (command === '/box' || command === '/chest' || command === '/mysterybox') {
+        const boxRes = await openMysteryBox(userId, firstName);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🎁 <b>MYSTERY VAULT UNLOCKED!</b> ⚡\n\n` +
-            `Congratulations ${escapeHtml(firstName)}!\n` +
-            `You unlocked: <b>⭐ +50 Bonus Viral Points & 24h 2x Multiplier!</b>\n\n` +
-            `Invite friends to earn more mystery chests.`,
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+          allow_sending_without_reply: true,
+          text: boxRes.text,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -426,22 +571,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Command: /rewards or /milestones
+      // Command: /rewards or /milestones (100% Real Milestone Progress)
       if (command === '/rewards' || command === '/milestones') {
+        const rewardsText = await getRewardsMessage(userId);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🎁 <b>Milestone Rewards & Prize Vault:</b>\n\n` +
-            `Reach verified join milestones to instantly unlock prizes:\n\n` +
-            `🥉 <b>Tier 1 (5 Verified Invites):</b>\n` +
-            `• Status: <b>UNLOCKED ✅</b>\n` +
-            `• Reward: Exclusive Alpha Community VIP Access\n\n` +
-            `🥈 <b>Tier 2 (15 Verified Invites):</b>\n` +
-            `• Status: <i>3 Invites Remaining</i> (12/15)\n` +
-            `• Reward: $25 Telegram Stars Voucher\n\n` +
-            `🥇 <b>Tier 3 (50 Verified Invites):</b>\n` +
-            `• Status: <i>38 Invites Remaining</i> (12/50)\n` +
-            `• Reward: Lifetime Pro SaaS Pass & Legendary Mystery Box`,
+          reply_to_message_id: isGroup ? msg.message_id : undefined,
+          allow_sending_without_reply: true,
+          text: rewardsText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -596,6 +733,15 @@ export async function POST(req: NextRequest) {
 
       console.log(`🔘 [TG_CALLBACK] From: ${firstName} (ID: ${userId}) | Data: "${data}"`);
 
+      if (userId) {
+        getOrCreateUser(userId, {
+          first_name: firstName,
+          last_name: from.last_name,
+          username: from.username,
+          is_premium: from.is_premium,
+        }).catch((uErr) => console.error('Error persisting user on cb:', uErr));
+      }
+
       await callTelegramApi('answerCallbackQuery', {
         callback_query_id: cbId,
         text: '✦ TeleGrowth Activated!',
@@ -667,22 +813,12 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-      // Action: cb_my_stats
+      // Action: cb_my_stats (100% Real Database Telemetry)
       else if (data === 'cb_my_stats' || data === 'cb_stats') {
+        const statsText = await getStatsMessage(userId, firstName, !!from.is_premium);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `📊 <b>TeleGrowth Performance Profile</b>\n\n` +
-            `👤 <b>Creator:</b> ${escapeHtml(firstName)} (<code>${userId}</code>)\n` +
-            `⭐ <b>Tier:</b> ${from.is_premium ? 'VIP Gold (2x Boost)' : 'Standard Member'}\n\n` +
-            `📈 <b>Referral Telemetry:</b>\n` +
-            `• Total Invites: <b>12</b>\n` +
-            `• Verified Members: <b>10</b> (83.3% Retention)\n` +
-            `• In Anti-Fraud Hold: <b>2</b> (48h verification)\n` +
-            `• Earned Points: <b>340 pts</b>\n` +
-            `• Community Rank: <b>#14</b>\n` +
-            `• Daily Streak: <b>4 Days Active</b> 🔥\n` +
-            `• Unopened Chests: <b>1 Mystery Box</b> 🎁`,
+          text: statsText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -695,18 +831,12 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-      // Action: cb_leaderboard
+      // Action: cb_leaderboard (NO DEMO DATA)
       else if (data === 'cb_leaderboard') {
+        const lbText = await getLeaderboardMessage();
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🏆 <b>TeleGrowth Top Referrers Leaderboard</b>\n\n` +
-            `🥇 <b>1. Alex_Crypto</b> — 452 invites (4,520 pts) 👑\n` +
-            `🥈 <b>2. Elena_Dev</b> — 318 invites (3,180 pts) 🥈\n` +
-            `🥉 <b>3. Satoshi99</b> — 287 invites (2,870 pts) 🥉\n` +
-            `4. Web3_Hunter — 190 invites (1,900 pts)\n` +
-            `5. TelegramAlpha — 145 invites (1,450 pts)\n\n` +
-            `<i>Rankings update continuously with anti-fraud verification.</i>`,
+          text: lbText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -716,22 +846,12 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-      // Action: cb_rewards
+      // Action: cb_rewards (Real Milestone Progress)
       else if (data === 'cb_rewards') {
+        const rewardsText = await getRewardsMessage(userId);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🎁 <b>Milestone Rewards & Prize Vault:</b>\n\n` +
-            `Reach verified join milestones to instantly unlock prizes:\n\n` +
-            `🥉 <b>Tier 1 (5 Verified Invites):</b>\n` +
-            `• Status: <b>UNLOCKED ✅</b>\n` +
-            `• Reward: Exclusive Alpha Community VIP Access\n\n` +
-            `🥈 <b>Tier 2 (15 Verified Invites):</b>\n` +
-            `• Status: <i>3 Invites Remaining</i> (12/15)\n` +
-            `• Reward: $25 Telegram Stars Voucher\n\n` +
-            `🥇 <b>Tier 3 (50 Verified Invites):</b>\n` +
-            `• Status: <i>38 Invites Remaining</i> (12/50)\n` +
-            `• Reward: Lifetime Pro SaaS Pass & Legendary Mystery Box`,
+          text: rewardsText,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -857,15 +977,12 @@ export async function POST(req: NextRequest) {
           },
         });
       }
-      // Action: cb_mystery_box
+      // Action: cb_mystery_box (Real Box Opener)
       else if (data === 'cb_mystery_box') {
+        const boxRes = await openMysteryBox(userId, firstName);
         await callTelegramApi('sendMessage', {
           chat_id: chatId,
-          text: 
-            `🎁 <b>MYSTERY VAULT UNLOCKED!</b> ⚡\n\n` +
-            `Congratulations ${escapeHtml(firstName)}!\n` +
-            `You unlocked: <b>⭐ +50 Bonus Viral Points & 24h 2x Multiplier!</b>\n\n` +
-            `Invite friends to earn more mystery chests.`,
+          text: boxRes.text,
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [
@@ -925,4 +1042,5 @@ export async function POST(req: NextRequest) {
     console.error(`💥 [TG_CRITICAL_ERROR] Error in webhook:`, err?.stack || err?.message || err);
     return NextResponse.json({ ok: true });
   }
+  });
 }
