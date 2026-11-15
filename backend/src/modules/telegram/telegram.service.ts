@@ -1010,7 +1010,10 @@ export class TelegramService {
             { text: '📊 My Stats', callback_data: 'cb_my_stats' },
           ],
           [
+            { text: '🔒 Privacy Policy & Terms', url: 'https://telegra.ph/TeleGrowth--Privacy-Policy--Terms-11-15' },
             { text: '⭐ Upgrade Plan', callback_data: 'cmd_upgrade_stars' },
+          ],
+          [
             { text: '◀️ Main Menu', callback_data: 'cb_menu' },
           ],
         ],
