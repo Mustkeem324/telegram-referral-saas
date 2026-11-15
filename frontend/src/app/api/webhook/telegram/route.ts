@@ -209,21 +209,27 @@ export async function POST(req: NextRequest) {
 
       // Group-specific command handling
       if (isGroup) {
-        if (command === '/start' || command === '/help') {
-          console.log(`👥 [CMD_GROUP_START] Group ${chatId} started by ${userId}`);
+        const isMentioned = text.toLowerCase().includes(`@${BOT_USERNAME.toLowerCase()}`);
+
+        if (command === '/start' || command === '/help' || (isMentioned && !command.startsWith('/'))) {
+          console.log(`👥 [CMD_GROUP_START] Group ${chatId} started or mentioned by ${userId}`);
           await callTelegramApi('sendMessage', {
             chat_id: chatId,
+            reply_to_message_id: msg.message_id,
+            allow_sending_without_reply: true,
             text:
               `👋 <b>TeleGrowth Referral Engine is ACTIVE in ${escapeHtml(msg.chat?.title || 'this group')}!</b>\n\n` +
               `👥 <b>For Members:</b>\n` +
-              `Run /link to get your personal invite link for this community and earn points!\n\n` +
+              `• Run /link to get your personal invite tracking link!\n` +
+              `• Run /stats to view your points and referral rank.\n\n` +
               `🛡️ <b>For Group Admins:</b>\n` +
-              `Ensure <b>@${BOT_USERNAME}</b> is an <b>Admin</b> with <i>"Invite Users via Link"</i> permission enabled to attribute joins.\n\n` +
-              `<i>Commands: /link, /stats, /leaderboard, /rewards, /rules</i>`,
+              `1. Ensure <b>@${BOT_USERNAME}</b> is an <b>Admin</b> in this group.\n` +
+              `2. Grant the permission: <i>"Invite Users via Link"</i> to track joins.\n\n` +
+              `<i>Commands: /link, /stats, /leaderboard, /rewards, /rules, /faq</i>`,
             parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
-                [{ text: '🔗 Get My Group Invite Link', url: `https://t.me/${BOT_USERNAME}?start=link` }],
+                [{ text: '🔗 Get My Group Invite Link', url: `https://t.me/${BOT_USERNAME}?start=ref_${userId}` }],
                 [{ text: '📱 Open Mini-App', web_app: { url: `${APP_URL}/miniapp` } }],
               ],
             },
@@ -235,6 +241,8 @@ export async function POST(req: NextRequest) {
           const groupLink = `https://t.me/${BOT_USERNAME}?start=ref_${userId}`;
           await callTelegramApi('sendMessage', {
             chat_id: chatId,
+            reply_to_message_id: msg.message_id,
+            allow_sending_without_reply: true,
             text:
               `🔗 <b>Personal Invite Link for ${escapeHtml(firstName)}:</b>\n\n` +
               `<code>${groupLink}</code>\n\n` +
@@ -246,6 +254,11 @@ export async function POST(req: NextRequest) {
               ],
             },
           });
+          return NextResponse.json({ ok: true });
+        }
+
+        // If it's a group message and NOT a command, don't spam the group
+        if (!command.startsWith('/')) {
           return NextResponse.json({ ok: true });
         }
       }
@@ -557,7 +570,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true });
       }
 
-      // Default message fallback: present original main menu
+      // Default message fallback: present original main menu (only in private chats)
+      if (isGroup) {
+        return NextResponse.json({ ok: true });
+      }
+
       await callTelegramApi('sendMessage', {
         chat_id: chatId,
         text: getWelcomeMessage(firstName),
@@ -859,6 +876,47 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      return NextResponse.json({ ok: true });
+    }
+
+    // 3. Handle My Chat Member Updates (Bot added to group/supergroup/channel or promoted to Admin)
+    if (body.my_chat_member) {
+      const mcm = body.my_chat_member;
+      const chat = mcm.chat;
+      const chatId = chat?.id;
+      const newStatus = mcm.new_chat_member?.status;
+
+      console.log(`🛡️ [TG_MY_CHAT_MEMBER] Chat: "${chat?.title}" (ID: ${chatId}, Type: ${chat?.type}) | Status: "${newStatus}"`);
+
+      // If bot is added as member or administrator
+      if (newStatus === 'member' || newStatus === 'administrator') {
+        await callTelegramApi('sendMessage', {
+          chat_id: chatId,
+          text:
+            `🎉 <b>Thank you for adding TeleGrowth to ${escapeHtml(chat?.title || 'this community')}!</b>\n\n` +
+            `🚀 <b>To activate automatic viral join tracking:</b>\n` +
+            `1. Promote <b>@${BOT_USERNAME}</b> to <b>Admin</b>.\n` +
+            `2. Grant the permission: <i>"Invite Users via Link"</i>.\n` +
+            `3. Members can now type /link to get their personal invite tracking links!`,
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '📱 Launch Mini-App', web_app: { url: `${APP_URL}/miniapp` } }],
+              [{ text: '🖥 Creator Studio', url: `${APP_URL}/dashboard` }],
+            ],
+          },
+        });
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // 4. Handle Channel Member Updates (Join attribution)
+    if (body.chat_member) {
+      const cm = body.chat_member;
+      const chat = cm.chat;
+      const newStatus = cm.new_chat_member?.status;
+      const user = cm.new_chat_member?.user;
+      console.log(`👥 [TG_CHAT_MEMBER] Channel: "${chat?.title}" | User: ${user?.first_name} (ID: ${user?.id}) | Status: ${newStatus}`);
       return NextResponse.json({ ok: true });
     }
 
